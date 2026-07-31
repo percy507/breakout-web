@@ -30,6 +30,7 @@ const translation = {
     continue: '계속',
     fire: '발사',
     help: '도움말',
+    settings: '설정',
     close: '닫기',
     nextLevel: '다음 레벨',
     retry: '재시도',
@@ -57,12 +58,33 @@ const translation = {
     powerupsTitle: '파워업',
     powerupsPierce: '관통은 지나간 각 벽돌의 타격 횟수를 3 줄입니다',
     powerupsMulti: '멀티볼과 5방향 확산은 현재 모든 공에 적용됩니다',
-    powerupsLimit: '화면에는 최대 100개의 공이 있을 수 있습니다',
+    powerupsLimit: '화면에는 최대 {{maxBalls}}개의 공이 있을 수 있습니다',
     rulesTitle: '규칙',
     rulesLives: '각 레벨은 목숨 3개이며, 잃은 뒤 팝업에서 계속할 수 있습니다',
     rulesClear: '깰 수 있는 모든 벽돌을 없애면 레벨 클리어입니다',
     rulesSpeed: '현재 목숨 동안 공 속도는 부드럽게 증가합니다',
     rulesSave: '진행도와 최고 점수는 이 브라우저에 저장됩니다',
+  },
+  settings: {
+    aria: '게임 설정',
+    title: '게임 설정',
+    subtitle: '성능과 후반 레벨의 타격감을 조정합니다.',
+    maxBalls: '화면 최대 공 수',
+    brickSurge: '벽돌 강화',
+    surgeModes: {
+      off: {
+        label: '끄기',
+        hint: '공 수가 크게 늘어나도 남은 벽돌의 타격 횟수를 바꾸지 않습니다.',
+      },
+      normal: {
+        label: '강화',
+        hint: '공이 25개를 초과하면 남은 벽돌은 30번 맞아야 깨집니다.',
+      },
+      super: {
+        label: '슈퍼 강화',
+        hint: '공이 25개를 초과해 발동된 뒤에는 남은 벽돌이 100번 맞아야 깨지고, 패들 폭은 항상 최소 3레벨입니다.',
+      },
+    },
   },
   modal: {
     passedTitle: '레벨 {{level}} 클리어',

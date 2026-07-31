@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  MAX_BALLS,
+  BALL_SURGE_NORMAL_HP,
+  BALL_SURGE_SUPER_HP,
+  DEFAULT_GAME_CONFIG,
   MAX_BRICK_HP,
   PADDLE_MAX_WIDE_LEVEL,
+  SUPER_SURGE_MIN_WIDE_LEVEL,
   WIDE_DURATION_MS,
 } from './constants';
 import {
@@ -12,12 +15,20 @@ import {
   createGame,
   generateBricks,
   handleBrickCollisions,
+  setGameConfig,
+  spawnFanBalls,
   updateGame,
 } from './game';
+import { getPaddleWidth } from './geometry';
 import type { Ball, Brick } from './types';
 
 function makeGame() {
-  return createGame({ highestUnlocked: 1, bestScore: 0, muted: true });
+  return createGame({
+    highestUnlocked: 1,
+    bestScore: 0,
+    muted: true,
+    config: { ...DEFAULT_GAME_CONFIG },
+  });
 }
 
 function makeBall(overrides: Partial<Ball> = {}): Ball {
@@ -104,11 +115,62 @@ describe('powerups', () => {
     applyPowerup(game, 'burst', 1000);
     expect(game.balls).toHaveLength(24);
 
-    game.balls = Array.from({ length: MAX_BALLS - 1 }, (_, index) =>
+    game.config.maxBalls = 20;
+    game.balls = Array.from({ length: game.config.maxBalls - 1 }, (_, index) =>
       makeBall({ id: index + 1 }),
     );
     applyPowerup(game, 'burst', 1000);
-    expect(game.balls).toHaveLength(MAX_BALLS);
+    expect(game.balls).toHaveLength(game.config.maxBalls);
+  });
+
+  it('raises remaining breakable bricks once ball count exceeds 25', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const game = makeGame();
+    game.balls = Array.from({ length: 20 }, (_, index) => makeBall({ id: index + 1 }));
+    game.bricks = [
+      makeBrick({ id: 10, hp: 1, maxHp: 1 }),
+      makeBrick({ id: 11, hp: 7, maxHp: 7 }),
+      makeBrick({ id: 12, hp: 99, maxHp: 99, obstacle: true }),
+    ];
+
+    spawnFanBalls(game, [game.balls[0]], 5);
+    expect(game.balls).toHaveLength(25);
+    expect(game.bricks[0].hp).toBe(1);
+    expect(game.ballSurgeApplied).toBe(false);
+
+    spawnFanBalls(game, [game.balls[0]], 1);
+    expect(game.balls.length).toBeGreaterThan(25);
+    expect(game.ballSurgeApplied).toBe(true);
+    expect(game.bricks[0].hp).toBe(BALL_SURGE_NORMAL_HP);
+    expect(game.bricks[0].maxHp).toBe(BALL_SURGE_NORMAL_HP);
+    expect(game.bricks[1].hp).toBe(BALL_SURGE_NORMAL_HP);
+    expect(game.bricks[1].maxHp).toBe(BALL_SURGE_NORMAL_HP);
+    expect(game.bricks[2].hp).toBe(99);
+  });
+
+  it('respects surge modes and super paddle minimum', () => {
+    const game = makeGame();
+    game.balls = Array.from({ length: 25 }, (_, index) => makeBall({ id: index + 1 }));
+    game.bricks = [makeBrick({ hp: 2, maxHp: 2 })];
+
+    setGameConfig(game, { maxBalls: 50, brickSurgeMode: 'super' }, 1000);
+    expect(game.paddle.width).toBe(getPaddleWidth(0, game.worldWidth));
+
+    game.balls.push(makeBall({ id: 26 }));
+
+    setGameConfig(game, { maxBalls: 20, brickSurgeMode: 'off' }, 1000);
+    expect(game.balls).toHaveLength(20);
+    expect(game.bricks[0].hp).toBe(2);
+    expect(game.ballSurgeApplied).toBe(false);
+
+    game.balls = Array.from({ length: 26 }, (_, index) => makeBall({ id: index + 1 }));
+    setGameConfig(game, { maxBalls: 50, brickSurgeMode: 'super' }, 1000);
+    expect(game.ballSurgeApplied).toBe(true);
+    expect(game.bricks[0].hp).toBe(BALL_SURGE_SUPER_HP);
+    expect(game.bricks[0].maxHp).toBe(BALL_SURGE_SUPER_HP);
+    expect(game.paddle.width).toBe(
+      getPaddleWidth(SUPER_SURGE_MIN_WIDE_LEVEL, game.worldWidth),
+    );
   });
 
   it('increments wide level up to level 5 and refreshes duration', () => {

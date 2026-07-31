@@ -30,6 +30,7 @@ const translation = {
     continue: 'Weiter',
     fire: 'Schießen',
     help: 'Hilfe',
+    settings: 'Einstellungen',
     close: 'Schließen',
     nextLevel: 'Nächstes Level',
     retry: 'Neu versuchen',
@@ -58,12 +59,34 @@ const translation = {
     powerupsTitle: 'Powerups',
     powerupsPierce: 'Durchschuss zieht jedem durchquerten Stein 3 Treffer ab',
     powerupsMulti: 'Multiball und Fächer wirken auf alle aktuellen Bälle',
-    powerupsLimit: 'Bis zu 100 Bälle können gleichzeitig auf dem Bildschirm sein',
+    powerupsLimit:
+      'Bis zu {{maxBalls}} Bälle können gleichzeitig auf dem Bildschirm sein',
     rulesTitle: 'Regeln',
     rulesLives: 'Jedes Level hat 3 Leben; nach einem Verlust geht es im Popup weiter',
     rulesClear: 'Zerstöre alle zerstörbaren Steine, um das Level zu schaffen',
     rulesSpeed: 'Die Ballgeschwindigkeit steigt während des aktuellen Lebens sanft an',
     rulesSave: 'Fortschritt und Bestwert werden in diesem Browser gespeichert',
+  },
+  settings: {
+    aria: 'Spieleinstellungen',
+    title: 'Spieleinstellungen',
+    subtitle: 'Passe Leistung und Intensität im späten Level an.',
+    maxBalls: 'Maximale Bälle auf dem Feld',
+    brickSurge: 'Stein-Verstärkung',
+    surgeModes: {
+      off: {
+        label: 'Aus',
+        hint: 'Verändert verbleibende Steintreffer nicht, wenn sehr viele Bälle aktiv sind.',
+      },
+      normal: {
+        label: 'Verstärkt',
+        hint: 'Bei mehr als 25 Bällen brauchen verbleibende Steine 30 Treffer.',
+      },
+      super: {
+        label: 'Super-Verstärkt',
+        hint: 'Nachdem mehr als 25 Bälle gleichzeitig aktiv sind, brauchen verbleibende Steine 100 Treffer und das Paddle bleibt mindestens Stufe 3 breit.',
+      },
+    },
   },
   modal: {
     passedTitle: 'Level {{level}} geschafft',

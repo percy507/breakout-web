@@ -30,6 +30,7 @@ const translation = {
     continue: 'Continuer',
     fire: 'Tirer',
     help: 'Aide',
+    settings: 'Réglages',
     close: 'Fermer',
     nextLevel: 'Niveau suivant',
     retry: 'Réessayer',
@@ -58,12 +59,33 @@ const translation = {
     powerupsTitle: 'Bonus',
     powerupsPierce: 'Percer retire 3 coups à chaque brique traversée',
     powerupsMulti: 'Multiballe et rafale s’appliquent à toutes les balles actuelles',
-    powerupsLimit: 'Jusqu’à 100 balles peuvent être à l’écran',
+    powerupsLimit: 'Jusqu’à {{maxBalls}} balles peuvent être à l’écran',
     rulesTitle: 'Règles',
     rulesLives: 'Chaque niveau a 3 vies ; après une perte, continuez depuis la fenêtre',
     rulesClear: 'Cassez toutes les briques destructibles pour réussir le niveau',
     rulesSpeed: 'La vitesse de la balle augmente progressivement pendant la vie actuelle',
     rulesSave: 'La progression et le record sont enregistrés dans ce navigateur',
+  },
+  settings: {
+    aria: 'Réglages du jeu',
+    title: 'Réglages du jeu',
+    subtitle: 'Ajustez les performances et l’intensité de fin de niveau.',
+    maxBalls: 'Balles maximum à l’écran',
+    brickSurge: 'Renfort des briques',
+    surgeModes: {
+      off: {
+        label: 'Désactivé',
+        hint: 'Ne change pas les coups restants quand le nombre de balles explose.',
+      },
+      normal: {
+        label: 'Renfort',
+        hint: 'Avec plus de 25 balles en même temps, les briques restantes demandent 30 coups.',
+      },
+      super: {
+        label: 'Super renfort',
+        hint: 'Après avoir dépassé 25 balles en même temps, les briques restantes demandent 100 coups et la raquette reste au moins niveau 3.',
+      },
+    },
   },
   modal: {
     passedTitle: 'Niveau {{level}} réussi',

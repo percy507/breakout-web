@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 
 import { unlockAudio } from './audio';
 import {
+  BALL_LIMIT_OPTIONS,
+  BRICK_SURGE_MODES,
   IDLE_FRAME_MS,
   MAX_AIM_ANGLE,
   MIN_AIM_ANGLE,
@@ -21,6 +23,7 @@ import {
   launchAimedBall,
   resetLevel,
   retryLevel,
+  setGameConfig,
   syncGameLayout,
   toSnapshot,
   updateGame,
@@ -40,7 +43,7 @@ import {
 } from './i18n';
 import { drawGame } from './render';
 import { persistStoredState, readStoredState } from './storage';
-import type { Snapshot } from './types';
+import type { BallLimit, BrickSurgeMode, GameConfig, Snapshot } from './types';
 
 /** 游戏 React 容器，只负责 UI、输入和浏览器能力接入 */
 export default function App() {
@@ -52,6 +55,7 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<Snapshot>(() => toSnapshot(gameRef.current));
   const [menuOpen, setMenuOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const activeLanguage = i18n.resolvedLanguage || i18n.language;
   const currentLanguage = SUPPORTED_LANGUAGES.includes(activeLanguage as Language)
     ? (activeLanguage as Language)
@@ -105,6 +109,7 @@ export default function App() {
     aimingPointerClientXRef.current = null;
     setMenuOpen(false);
     setHelpOpen(false);
+    setSettingsOpen(false);
     unlockAudio(game);
 
     if (game.status === 'levelClear') {
@@ -138,11 +143,13 @@ export default function App() {
       exitGamePointerLock();
       setMenuOpen(false);
       setHelpOpen(false);
+      setSettingsOpen(false);
     } else if (game.status === 'paused') {
       game.status = 'playing';
       lockGamePointer();
       setMenuOpen(false);
       setHelpOpen(false);
+      setSettingsOpen(false);
     }
     syncSnapshot();
   }, [exitGamePointerLock, lockGamePointer, syncSnapshot]);
@@ -153,6 +160,7 @@ export default function App() {
     gameRef.current.status = 'aiming';
     setMenuOpen(false);
     setHelpOpen(false);
+    setSettingsOpen(false);
     exitGamePointerLock();
     syncSnapshot();
   }, [exitGamePointerLock, syncSnapshot]);
@@ -163,9 +171,21 @@ export default function App() {
     aimingPointerClientXRef.current = null;
     setMenuOpen(true);
     setHelpOpen(false);
+    setSettingsOpen(false);
     exitGamePointerLock();
     syncSnapshot();
   }, [exitGamePointerLock, syncSnapshot]);
+
+  /** 保存并应用首页玩法配置 */
+  const changeGameConfig = useCallback(
+    (config: GameConfig) => {
+      const game = gameRef.current;
+      setGameConfig(game, config);
+      persistStoredState(game);
+      syncSnapshot();
+    },
+    [syncSnapshot],
+  );
 
   /** 切换静音并保存偏好 */
   const toggleMuted = useCallback(() => {
@@ -191,6 +211,7 @@ export default function App() {
     persistStoredState(game);
     setMenuOpen(false);
     setHelpOpen(false);
+    setSettingsOpen(false);
     exitGamePointerLock();
     syncSnapshot();
   }, [exitGamePointerLock, syncSnapshot, t]);
@@ -464,10 +485,12 @@ export default function App() {
     /** 游戏主循环，操作中 60FPS，非操作态 15FPS */
     const runFrame = (time: number) => {
       const game = gameRef.current;
+      const shouldUpdateWorld = !menuOpen;
       const isActiveStatus =
-        game.status === 'aiming' ||
-        game.status === 'playing' ||
-        game.status === 'levelClear';
+        shouldUpdateWorld &&
+        (game.status === 'aiming' ||
+          game.status === 'playing' ||
+          game.status === 'levelClear');
       const frameMs = isActiveStatus ? PLAYING_FRAME_MS : IDLE_FRAME_MS;
       if (time - game.lastFrameTime < frameMs) {
         frameId = window.requestAnimationFrame(runFrame);
@@ -477,15 +500,17 @@ export default function App() {
       const elapsedSeconds = Math.min((time - game.lastFrameTime) / 1000 || 0, 0.033);
       game.lastFrameTime = time;
 
-      const canvasRect = canvas.getBoundingClientRect();
-      const worldSize = getWorldSizeForViewport(canvasRect.width, canvasRect.height);
-      if (game.status !== 'paused') {
-        syncGameLayout(game, worldSize.worldWidth, worldSize.worldHeight);
+      if (shouldUpdateWorld) {
+        const canvasRect = canvas.getBoundingClientRect();
+        const worldSize = getWorldSizeForViewport(canvasRect.width, canvasRect.height);
+        if (game.status !== 'paused') {
+          syncGameLayout(game, worldSize.worldWidth, worldSize.worldHeight);
+        }
+        updateGame(game, elapsedSeconds, time);
       }
-      updateGame(game, elapsedSeconds, time);
       drawGame(renderingContext, canvas, game, time);
 
-      if (game.status !== 'playing') {
+      if (shouldUpdateWorld && game.status !== 'playing') {
         exitGamePointerLock();
       }
 
@@ -500,7 +525,7 @@ export default function App() {
     frameId = window.requestAnimationFrame(runFrame);
 
     return () => window.cancelAnimationFrame(frameId);
-  }, [exitGamePointerLock, syncSnapshot]);
+  }, [exitGamePointerLock, menuOpen, syncSnapshot]);
 
   const primaryActionLabel = getPrimaryActionLabel(snapshot.status);
   const shouldUseViewportPanel = shouldFillViewport(snapshot.status) && !menuOpen;
@@ -532,15 +557,14 @@ export default function App() {
             <button className="ghost-button" type="button" onClick={toggleMuted}>
               {snapshot.muted ? t('app.unmute') : t('app.mute')}
             </button>
-            <label className="language-select">
-              <select value={currentLanguage} onChange={changeLanguage}>
-                {SUPPORTED_LANGUAGES.map((language) => (
-                  <option key={language} value={language}>
-                    {LANGUAGE_LABELS[language]}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <PillSelect
+              value={currentLanguage}
+              options={SUPPORTED_LANGUAGES.map((language) => ({
+                value: language,
+                label: LANGUAGE_LABELS[language],
+              }))}
+              onChange={changeLanguage}
+            />
           </div>
         </div>
 
@@ -568,12 +592,26 @@ export default function App() {
               snapshot={snapshot}
               primaryActionLabel={primaryActionLabel}
               onPrimaryAction={startOrAdvance}
-              onHelp={() => setHelpOpen(true)}
+              onHelp={() => {
+                setHelpOpen(true);
+                setSettingsOpen(false);
+              }}
+              onSettings={() => {
+                setSettingsOpen(true);
+                setHelpOpen(false);
+              }}
               onReset={resetProgress}
             />
           )}
           {!shouldUseViewportPanel && helpOpen && (
             <HelpDialog snapshot={snapshot} onClose={() => setHelpOpen(false)} />
+          )}
+          {!shouldUseViewportPanel && settingsOpen && (
+            <SettingsDialog
+              config={snapshot.config}
+              onChange={changeGameConfig}
+              onClose={() => setSettingsOpen(false)}
+            />
           )}
           {shouldShowGameModal && (
             <GameModal
@@ -591,18 +629,43 @@ export default function App() {
   );
 }
 
+/** 胶囊形下拉框，用于顶部语言和配置项选择 */
+function PillSelect({
+  value,
+  options,
+  onChange,
+}: {
+  value: string | number;
+  options: { value: string | number; label: string | number }[];
+  onChange: (event: React.ChangeEvent<HTMLSelectElement>) => void;
+}) {
+  return (
+    <span className="pill-select">
+      <select value={value} onChange={onChange}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </span>
+  );
+}
+
 /** 首页只展示垂直菜单，避免长帮助文案撑出滚动 */
 function MenuPanel({
   snapshot,
   primaryActionLabel,
   onPrimaryAction,
   onHelp,
+  onSettings,
   onReset,
 }: {
   snapshot: Snapshot;
   primaryActionLabel: string;
   onPrimaryAction: () => void;
   onHelp: () => void;
+  onSettings: () => void;
   onReset: () => void;
 }) {
   const { t } = useTranslation();
@@ -618,6 +681,9 @@ function MenuPanel({
           </button>
           <button className="secondary-button" type="button" onClick={onHelp}>
             {t('actions.help')}
+          </button>
+          <button className="secondary-button" type="button" onClick={onSettings}>
+            {t('actions.settings')}
           </button>
           <button className="danger-button" type="button" onClick={onReset}>
             {t('actions.resetProgress')}
@@ -676,7 +742,7 @@ function HelpDialog({ snapshot, onClose }: { snapshot: Snapshot; onClose: () => 
               <li>{powerText}</li>
               <li>{t('help.powerupsPierce')}</li>
               <li>{t('help.powerupsMulti')}</li>
-              <li>{t('help.powerupsLimit')}</li>
+              <li>{t('help.powerupsLimit', { maxBalls: snapshot.config.maxBalls })}</li>
             </ul>
           </section>
           <section className="help-block">
@@ -689,6 +755,83 @@ function HelpDialog({ snapshot, onClose }: { snapshot: Snapshot; onClose: () => 
             </ul>
           </section>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** 首页玩法配置弹窗 */
+function SettingsDialog({
+  config,
+  onChange,
+  onClose,
+}: {
+  config: GameConfig;
+  onChange: (config: GameConfig) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+
+  const changeMaxBalls = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    onChange({
+      ...config,
+      maxBalls: Number(event.target.value) as BallLimit,
+    });
+  };
+
+  const changeBrickSurgeMode = (mode: BrickSurgeMode) => {
+    onChange({ ...config, brickSurgeMode: mode });
+  };
+
+  return (
+    <div className="game-modal-overlay help-dialog-overlay">
+      <div
+        className="help-card help-dialog-card settings-card"
+        role="dialog"
+        aria-label={t('settings.aria')}>
+        <button
+          className="icon-button help-close-button"
+          type="button"
+          onClick={onClose}
+          aria-label={t('actions.close')}>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M6.7 5.3 12 10.6l5.3-5.3 1.4 1.4-5.3 5.3 5.3 5.3-1.4 1.4-5.3-5.3-5.3 5.3-1.4-1.4 5.3-5.3-5.3-5.3z" />
+          </svg>
+        </button>
+        <strong>{t('settings.title')}</strong>
+        <p>{t('settings.subtitle')}</p>
+        <section className="settings-section">
+          <label className="settings-select-row">
+            <span>{t('settings.maxBalls')}</span>
+            <PillSelect
+              value={config.maxBalls}
+              options={BALL_LIMIT_OPTIONS.map((maxBalls) => ({
+                value: maxBalls,
+                label: maxBalls,
+              }))}
+              onChange={changeMaxBalls}
+            />
+          </label>
+        </section>
+        <section className="settings-section">
+          <h2>{t('settings.brickSurge')}</h2>
+          <div className="settings-radio-grid">
+            {BRICK_SURGE_MODES.map((mode) => (
+              <label key={mode} className="settings-radio-card">
+                <input
+                  type="radio"
+                  name="brickSurgeMode"
+                  checked={config.brickSurgeMode === mode}
+                  onChange={() => changeBrickSurgeMode(mode)}
+                />
+                <span>
+                  <strong>{t(`settings.surgeModes.${mode}.label`)}</strong>
+                  <small>{t(`settings.surgeModes.${mode}.hint`)}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -745,7 +888,7 @@ function GameModal({
               {passed ? t('actions.nextLevel') : t('actions.continue')}
             </button>
           )}
-          {failed && (
+          {(lostLife || failed) && (
             <button className="secondary-button" type="button" onClick={onRetry}>
               {t('actions.retry')}
             </button>

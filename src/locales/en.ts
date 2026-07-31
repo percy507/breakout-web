@@ -32,6 +32,7 @@ const translation = {
     continue: 'Continue',
     fire: 'Fire',
     help: 'Help',
+    settings: 'Settings',
     close: 'Close',
     nextLevel: 'Next Level',
     retry: 'Retry',
@@ -59,12 +60,33 @@ const translation = {
     powerupsTitle: 'Powerups',
     powerupsPierce: 'Pierce removes 3 hits from each brick it passes through',
     powerupsMulti: 'Multi-ball and burst apply to every current ball',
-    powerupsLimit: 'Up to 100 balls can be on screen',
+    powerupsLimit: 'Up to {{maxBalls}} balls can be on screen',
     rulesTitle: 'Rules',
     rulesLives: 'Each level has 3 lives; after losing one, continue from the popup',
     rulesClear: 'Clear all breakable bricks to pass the level',
     rulesSpeed: 'Ball speed increases smoothly during the current life',
     rulesSave: 'Progress and best score are saved in this browser',
+  },
+  settings: {
+    aria: 'Game Settings',
+    title: 'Game Settings',
+    subtitle: 'Tune performance and late-level intensity.',
+    maxBalls: 'Max balls on screen',
+    brickSurge: 'Brick boost',
+    surgeModes: {
+      off: {
+        label: 'Off',
+        hint: 'Leave remaining bricks unchanged when the ball count surges.',
+      },
+      normal: {
+        label: 'Boost',
+        hint: 'When more than 25 balls coexist, remaining bricks need 30 hits.',
+      },
+      super: {
+        label: 'Super Boost',
+        hint: 'After more than 25 balls coexist, remaining bricks need 100 hits and the paddle stays at least level 3 wide.',
+      },
+    },
   },
   modal: {
     passedTitle: 'Level {{level}} Clear',

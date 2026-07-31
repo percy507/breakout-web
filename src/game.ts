@@ -6,11 +6,13 @@ import {
   BALL_RADIUS,
   BALL_SPEED_GROWTH_PER_SECOND,
   BALL_SPEED_SMOOTHING_PER_SECOND,
+  BALL_SURGE_NORMAL_HP,
+  BALL_SURGE_SUPER_HP,
+  BALL_SURGE_THRESHOLD,
   BRICK_HIT_TEST_TOP,
   BRICK_TOP,
   DEFAULT_AIM_ANGLE,
   MAX_AIM_ANGLE,
-  MAX_BALLS,
   MAX_BRICK_HP,
   MAX_PARTICLES,
   MIN_AIM_ANGLE,
@@ -23,6 +25,7 @@ import {
   PIERCE_DAMAGE,
   PORTRAIT_PADDLE_BOTTOM_GAP,
   POWERUPS,
+  SUPER_SURGE_MIN_WIDE_LEVEL,
   WIDE_DURATION_MS,
   WORLD_HEIGHT,
   WORLD_WIDTH,
@@ -41,6 +44,7 @@ import { persistStoredState } from './storage';
 import type {
   Ball,
   Brick,
+  GameConfig,
   GameState,
   ObstacleShape,
   PowerType,
@@ -53,6 +57,7 @@ import { clamp, nextId, seededRandom } from './utils';
 export function createGame(storedState: StoredState): GameState {
   const game: GameState = {
     ...storedState,
+    config: { ...storedState.config },
     level: storedState.highestUnlocked,
     score: 0,
     levelStartScore: 0,
@@ -78,6 +83,7 @@ export function createGame(storedState: StoredState): GameState {
     wideUntil: 0,
     slowUntil: 0,
     pierceUntil: 0,
+    ballSurgeApplied: false,
     levelClearAt: 0,
     shake: 0,
     lastFrameTime: performance.now(),
@@ -97,6 +103,7 @@ export function resetLevel(game: GameState, level: number) {
   game.status = 'ready';
   game.elapsedSeconds = 0;
   game.levelClearAt = 0;
+  game.ballSurgeApplied = false;
   game.aimAngle = DEFAULT_AIM_ANGLE;
   game.keyboardDirection = 0;
   resetLifeEffects(game);
@@ -104,7 +111,7 @@ export function resetLevel(game: GameState, level: number) {
   game.particles = [];
   game.paddle.top = getPaddleTop(game.worldHeight);
   game.paddle.centerX = game.worldWidth / 2;
-  game.paddle.width = PADDLE_BASE_WIDTH;
+  game.paddle.width = getConfiguredPaddleWidth(game);
   game.bricks = generateBricks(game, level);
   serveBall(game);
 }
@@ -156,7 +163,7 @@ export function syncGameLayout(game: GameState, worldWidth: number, worldHeight:
   game.worldHeight = worldHeight;
   game.paddle.centerX = worldWidth * centerRatio;
   game.paddle.top = getPaddleTop(worldHeight);
-  game.paddle.width = getPaddleWidth(game.wideLevel, game.worldWidth);
+  game.paddle.width = getConfiguredPaddleWidth(game);
   movePaddleTo(game, game.paddle.centerX);
   if (shouldRegenerateBricks) {
     game.bricks = generateBricks(game, game.level);
@@ -436,8 +443,31 @@ export function updatePaddleWidth(game: GameState, time: number) {
     game.wideUntil = 0;
   }
 
-  game.paddle.width = getPaddleWidth(game.wideLevel, game.worldWidth);
+  game.paddle.width = getConfiguredPaddleWidth(game);
   movePaddleTo(game, game.paddle.centerX);
+}
+
+/** 更新玩法配置，并立即同步依赖配置的挡板宽度 */
+export function setGameConfig(
+  game: GameState,
+  config: GameConfig,
+  time = performance.now(),
+) {
+  game.config = { ...config };
+  if (game.balls.length > game.config.maxBalls) {
+    game.balls = game.balls.slice(0, game.config.maxBalls);
+  }
+  applyBallSurgeBrickHp(game);
+  updatePaddleWidth(game, time);
+  attachReadyBall(game);
+}
+
+function getConfiguredPaddleWidth(game: GameState) {
+  const wideLevel =
+    game.config.brickSurgeMode === 'super' && game.ballSurgeApplied
+      ? Math.max(game.wideLevel, SUPER_SURGE_MIN_WIDE_LEVEL)
+      : game.wideLevel;
+  return getPaddleWidth(wideLevel, game.worldWidth);
 }
 
 /** 待发球和瞄准时球固定悬停在挡板上方 */
@@ -498,7 +528,7 @@ export function updateBalls(game: GameState, elapsedSeconds: number, time: numbe
 export function resetLifeEffects(game: GameState) {
   game.wideLevel = 0;
   game.wideUntil = 0;
-  game.paddle.width = PADDLE_BASE_WIDTH;
+  game.paddle.width = getConfiguredPaddleWidth(game);
   game.slowUntil = 0;
   game.pierceUntil = 0;
   game.powerups = [];
@@ -671,7 +701,8 @@ export function spawnFanBalls(
 
   for (const sourceBall of sourceBalls) {
     for (let countIndex = 0; countIndex < countPerBall; countIndex += 1) {
-      if (game.balls.length >= MAX_BALLS) {
+      if (game.balls.length >= game.config.maxBalls) {
+        applyBallSurgeBrickHp(game);
         return;
       }
 
@@ -689,6 +720,31 @@ export function spawnFanBalls(
         velocityY: Math.sin(angle) * speed,
         piercingBrickIds: [],
       });
+    }
+  }
+
+  applyBallSurgeBrickHp(game);
+}
+
+/** 球数首次超过阈值时，按当前配置把本关剩余可破坏砖块提升到高命中次数 */
+function applyBallSurgeBrickHp(game: GameState) {
+  if (
+    game.ballSurgeApplied ||
+    game.config.brickSurgeMode === 'off' ||
+    game.balls.length <= BALL_SURGE_THRESHOLD
+  ) {
+    return;
+  }
+
+  const surgeHp =
+    game.config.brickSurgeMode === 'super' ? BALL_SURGE_SUPER_HP : BALL_SURGE_NORMAL_HP;
+  game.ballSurgeApplied = true;
+  game.paddle.width = getConfiguredPaddleWidth(game);
+  movePaddleTo(game, game.paddle.centerX);
+  for (const brick of game.bricks) {
+    if (!brick.obstacle) {
+      brick.hp = surgeHp;
+      brick.maxHp = surgeHp;
     }
   }
 }
@@ -864,6 +920,7 @@ export function toSnapshot(game: GameState): Snapshot {
     bestScore: game.bestScore,
     highestUnlocked: game.highestUnlocked,
     muted: game.muted,
+    config: { ...game.config },
     ballCount: game.balls.length,
     activePowers,
   };

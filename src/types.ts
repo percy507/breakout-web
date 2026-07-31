@@ -11,6 +11,18 @@ export type GameStatus =
 /** 可掉落道具类型 */
 export type PowerType = 'wide' | 'slow' | 'multi' | 'pierce' | 'burst';
 
+/** 玩家可配置的场上小球共存上限 */
+export type BallLimit = 150 | 100 | 50 | 20;
+
+/** 多球后剩余砖块强化模式 */
+export type BrickSurgeMode = 'off' | 'normal' | 'super';
+
+/** 可持久化的游戏玩法配置 */
+export type GameConfig = {
+  maxBalls: BallLimit;
+  brickSurgeMode: BrickSurgeMode;
+};
+
 /** 拦截物外部形状，始终限制在单个砖块格内 */
 export type ObstacleShape =
   | 'block'
@@ -85,6 +97,7 @@ export type StoredState = {
   highestUnlocked: number;
   bestScore: number;
   muted: boolean;
+  config: GameConfig;
 };
 
 /** 游戏完整运行态，React 只读取 Snapshot 避免每帧重渲染 */
@@ -116,6 +129,8 @@ export type GameState = StoredState & {
   wideUntil: number;
   slowUntil: number;
   pierceUntil: number;
+  /** 本关是否已触发高球数砖块强化 */
+  ballSurgeApplied: boolean;
   /** 通关发生的时间戳，用于通关后挡板淡出和背景动效 */
   levelClearAt: number;
   shake: number;
@@ -134,6 +149,7 @@ export type Snapshot = {
   bestScore: number;
   highestUnlocked: number;
   muted: boolean;
+  config: GameConfig;
   ballCount: number;
   activePowers: string[];
 };

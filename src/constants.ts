@@ -1,4 +1,10 @@
-import type { PowerType, PowerupMeta } from './types';
+import type {
+  BallLimit,
+  BrickSurgeMode,
+  GameConfig,
+  PowerType,
+  PowerupMeta,
+} from './types';
 
 /** 游戏逻辑世界宽度，渲染时再映射到真实屏幕 */
 export const WORLD_WIDTH = 900;
@@ -57,10 +63,31 @@ export const MIN_AIM_ANGLE = -Math.PI + 0.16;
 /** 最大发球角度，允许更大侧向弹道但避免完全水平 */
 export const MAX_AIM_ANGLE = -0.16;
 
-/** 场上最大球数 */
-export const MAX_BALLS = 100;
+/** 玩家可选的小球共存上限 */
+export const BALL_LIMIT_OPTIONS: BallLimit[] = [150, 100, 50, 20];
 
-/** 可破坏砖块最高血量，数字表示需要命中的次数 */
+/** 玩家可选的砖块强化模式 */
+export const BRICK_SURGE_MODES: BrickSurgeMode[] = ['off', 'normal', 'super'];
+
+/** 默认游戏玩法配置 */
+export const DEFAULT_GAME_CONFIG: GameConfig = {
+  maxBalls: 100,
+  brickSurgeMode: 'normal',
+};
+
+/** 场上球数超过这个值时，剩余砖块进入高打击次数阶段 */
+export const BALL_SURGE_THRESHOLD = 25;
+
+/** 普通强化模式下剩余砖块统一提高到的命中次数 */
+export const BALL_SURGE_NORMAL_HP = 30;
+
+/** 超级强化模式下剩余砖块统一提高到的命中次数 */
+export const BALL_SURGE_SUPER_HP = 100;
+
+/** 超级强化模式下挡板至少保持的加宽等级 */
+export const SUPER_SURGE_MIN_WIDE_LEVEL = 3;
+
+/** 关卡初始生成的可破坏砖块最高血量，数字表示需要命中的次数 */
 export const MAX_BRICK_HP = 12;
 
 /** 场上最大粒子数 */

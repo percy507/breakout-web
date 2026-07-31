@@ -30,6 +30,7 @@ const translation = {
     continue: '続ける',
     fire: '発射',
     help: 'ヘルプ',
+    settings: '設定',
     close: '閉じる',
     nextLevel: '次のステージ',
     retry: 'リトライ',
@@ -57,12 +58,33 @@ const translation = {
     powerupsTitle: 'アイテム',
     powerupsPierce: '貫通は通過した各ブロックから固定で3ヒット分削ります',
     powerupsMulti: 'ダブルボールと5方向拡散は現在の全ボールに適用されます',
-    powerupsLimit: '画面上のボールは最大100個です',
+    powerupsLimit: '画面上のボールは最大{{maxBalls}}個です',
     rulesTitle: 'ルール',
     rulesLives: '各ステージは3ライフ。失った後はポップアップから続行できます',
     rulesClear: '壊せるブロックをすべて消すとクリア',
     rulesSpeed: '現在のライフ中、ボール速度はなめらかに上がります',
     rulesSave: '進行とベストスコアはこのブラウザに保存されます',
+  },
+  settings: {
+    aria: 'ゲーム設定',
+    title: 'ゲーム設定',
+    subtitle: '端末性能と終盤の手応えを調整します。',
+    maxBalls: '画面上の最大ボール数',
+    brickSurge: 'ブロック強化',
+    surgeModes: {
+      off: {
+        label: 'オフ',
+        hint: 'ボール数が増えても残りブロックのヒット数を変えません。',
+      },
+      normal: {
+        label: '強化',
+        hint: 'ボールが25個を超えると、残りブロックは30ヒット必要になります。',
+      },
+      super: {
+        label: 'スーパー強化',
+        hint: 'ボールが25個を超えて発動した後、残りブロックは100ヒット必要になり、パドル幅は常に最低レベル3になります。',
+      },
+    },
   },
   modal: {
     passedTitle: 'ステージ {{level}} クリア',

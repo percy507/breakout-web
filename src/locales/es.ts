@@ -30,6 +30,7 @@ const translation = {
     continue: 'Continuar',
     fire: 'Disparar',
     help: 'Ayuda',
+    settings: 'Ajustes',
     close: 'Cerrar',
     nextLevel: 'Siguiente nivel',
     retry: 'Reintentar',
@@ -58,12 +59,33 @@ const translation = {
     powerupsTitle: 'Poderes',
     powerupsPierce: 'Perforar quita 3 golpes a cada ladrillo atravesado',
     powerupsMulti: 'Multibola y ráfaga se aplican a todas las bolas actuales',
-    powerupsLimit: 'Puede haber hasta 100 bolas en pantalla',
+    powerupsLimit: 'Puede haber hasta {{maxBalls}} bolas en pantalla',
     rulesTitle: 'Reglas',
     rulesLives: 'Cada nivel tiene 3 vidas; al perder una, continúa desde el popup',
     rulesClear: 'Rompe todos los ladrillos destruibles para superar el nivel',
     rulesSpeed: 'La velocidad de la bola aumenta suavemente durante la vida actual',
     rulesSave: 'El progreso y el récord se guardan en este navegador',
+  },
+  settings: {
+    aria: 'Ajustes del juego',
+    title: 'Ajustes del juego',
+    subtitle: 'Ajusta el rendimiento y la intensidad del final de nivel.',
+    maxBalls: 'Máximo de bolas en pantalla',
+    brickSurge: 'Refuerzo de ladrillos',
+    surgeModes: {
+      off: {
+        label: 'Desactivado',
+        hint: 'No cambia los golpes restantes cuando sube el número de bolas.',
+      },
+      normal: {
+        label: 'Refuerzo',
+        hint: 'Con más de 25 bolas coexistiendo, los ladrillos restantes necesitan 30 golpes.',
+      },
+      super: {
+        label: 'Súper refuerzo',
+        hint: 'Después de superar 25 bolas coexistiendo, los ladrillos restantes necesitan 100 golpes y la pala queda al menos en nivel 3.',
+      },
+    },
   },
   modal: {
     passedTitle: 'Nivel {{level}} superado',

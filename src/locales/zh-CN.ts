@@ -30,6 +30,7 @@ const translation = {
     continue: '继续',
     fire: '发射',
     help: '帮助',
+    settings: '配置',
     close: '关闭',
     nextLevel: '下一关',
     retry: '重试',
@@ -56,12 +57,33 @@ const translation = {
     powerupsTitle: '道具',
     powerupsPierce: '穿透每次穿过单块砖固定扣 3 次，不会持续灼烧',
     powerupsMulti: '双球和发散五球会作用于当前所有球',
-    powerupsLimit: '场上最多 100 个球，达到上限后静默停止',
+    powerupsLimit: '场上最多 {{maxBalls}} 个球，达到上限后静默停止',
     rulesTitle: '规则',
     rulesLives: '每关 3 条生命，丢命后可在弹窗里继续或重试',
     rulesClear: '清空可破坏砖块即通关',
     rulesSpeed: '球速随当前生命存活时间平滑递增',
     rulesSave: '关卡和最高分会自动保存在当前浏览器',
+  },
+  settings: {
+    aria: '游戏配置',
+    title: '游戏配置',
+    subtitle: '按设备性能和想要的关卡节奏调整玩法',
+    maxBalls: '最多小球共存数',
+    brickSurge: '砖块强化',
+    surgeModes: {
+      off: {
+        label: '关闭',
+        hint: '小球数量暴涨时，不改变剩余砖块打击次数',
+      },
+      normal: {
+        label: '强化',
+        hint: '小球共存总数大于 25 时，剩余砖块打击次数强化为 30',
+      },
+      super: {
+        label: '超级强化',
+        hint: '小球共存总数大于 25 并触发后，剩余砖块打击次数强化为 100；挡板长度始终不低于 3 级',
+      },
+    },
   },
   modal: {
     passedTitle: '通过第 {{level}} 关',

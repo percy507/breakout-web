@@ -30,6 +30,7 @@ const translation = {
     continue: '繼續',
     fire: '發射',
     help: '說明',
+    settings: '配置',
     close: '關閉',
     nextLevel: '下一關',
     retry: '重試',
@@ -56,12 +57,33 @@ const translation = {
     powerupsTitle: '道具',
     powerupsPierce: '穿透每次穿過單塊磚固定扣 3 次，不會持續灼燒',
     powerupsMulti: '雙球和發散五球會作用於目前所有球',
-    powerupsLimit: '場上最多 100 顆球，達到上限後靜默停止',
+    powerupsLimit: '場上最多 {{maxBalls}} 顆球，達到上限後靜默停止',
     rulesTitle: '規則',
     rulesLives: '每關 3 條生命，丟命後可在彈窗裡繼續或重試',
     rulesClear: '清空可破壞磚塊即通關',
     rulesSpeed: '球速隨目前生命存活時間平滑遞增',
     rulesSave: '關卡和最高分會自動保存在目前瀏覽器',
+  },
+  settings: {
+    aria: '遊戲配置',
+    title: '遊戲配置',
+    subtitle: '依設備效能和想要的關卡節奏調整玩法',
+    maxBalls: '最多小球共存數',
+    brickSurge: '磚塊強化',
+    surgeModes: {
+      off: {
+        label: '關閉',
+        hint: '小球數量暴漲時，不改變剩餘磚塊打擊次數',
+      },
+      normal: {
+        label: '強化',
+        hint: '小球共存總數大於 25 時，剩餘磚塊打擊次數強化為 30',
+      },
+      super: {
+        label: '超級強化',
+        hint: '小球共存總數大於 25 並觸發後，剩餘磚塊打擊次數強化為 100；擋板長度始終不低於 3 級',
+      },
+    },
   },
   modal: {
     passedTitle: '通過第 {{level}} 關',
