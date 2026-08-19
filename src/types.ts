@@ -12,7 +12,7 @@ export type GameStatus =
 export type PowerType = 'wide' | 'slow' | 'multi' | 'pierce' | 'burst';
 
 /** 玩家可配置的场上小球共存上限 */
-export type BallLimit = 150 | 100 | 50 | 20;
+export type BallLimit = 20 | 50 | 100 | 150 | 300 | 500 | 1000;
 
 /** 多球后剩余砖块强化模式 */
 export type BrickSurgeMode = 'off' | 'normal' | 'super';

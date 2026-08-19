@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { circleIntersectsBrick, reflectBallFromBrick } from './geometry';
+import {
+  circleIntersectsBrick,
+  reflectBallFromBrick,
+  reflectBallFromRect,
+} from './geometry';
 import type { Ball, Brick, ObstacleShape } from './types';
 
 function makeObstacle(shape: ObstacleShape): Brick {
@@ -31,6 +35,26 @@ function makeBall(overrides: Partial<Ball>): Ball {
 }
 
 describe('obstacle geometry', () => {
+  it('reflects a rising ball from the bottom face when it enters a brick seam', () => {
+    const ball = makeBall({
+      centerX: 174,
+      centerY: 76,
+      velocityX: 0,
+      velocityY: -760,
+    });
+
+    reflectBallFromRect(ball, {
+      left: 178,
+      top: 48,
+      width: 70,
+      height: 24,
+    });
+
+    expect(ball.velocityX).toBe(0);
+    expect(ball.velocityY).toBeGreaterThan(0);
+    expect(ball.centerY).toBeGreaterThan(72);
+  });
+
   it('detects hits against non-rect obstacle outlines', () => {
     expect(
       circleIntersectsBrick(

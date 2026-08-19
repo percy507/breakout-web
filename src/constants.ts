@@ -64,7 +64,7 @@ export const MIN_AIM_ANGLE = -Math.PI + 0.16;
 export const MAX_AIM_ANGLE = -0.16;
 
 /** 玩家可选的小球共存上限 */
-export const BALL_LIMIT_OPTIONS: BallLimit[] = [150, 100, 50, 20];
+export const BALL_LIMIT_OPTIONS: BallLimit[] = [20, 50, 100, 150, 300, 500, 1000];
 
 /** 玩家可选的砖块强化模式 */
 export const BRICK_SURGE_MODES: BrickSurgeMode[] = ['off', 'normal', 'super'];
@@ -137,6 +137,12 @@ export const PAUSE_BUTTON_MARGIN = 14;
 
 /** 加宽道具持续时间，每次重新吃到都会刷新 */
 export const WIDE_DURATION_MS = 30_000;
+
+/** 减速道具持续时间，每次重新吃到都会刷新 */
+export const SLOW_DURATION_MS = 7_500;
+
+/** 穿透道具持续时间，每次重新吃到都会刷新 */
+export const PIERCE_DURATION_MS = 8_000;
 
 /** 穿透球穿过单个砖块时固定扣除的命中次数 */
 export const PIERCE_DAMAGE = 3;

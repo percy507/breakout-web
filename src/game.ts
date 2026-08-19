@@ -23,8 +23,10 @@ import {
   PADDLE_MAX_WIDE_LEVEL,
   PADDLE_SPEED,
   PIERCE_DAMAGE,
+  PIERCE_DURATION_MS,
   PORTRAIT_PADDLE_BOTTOM_GAP,
   POWERUPS,
+  SLOW_DURATION_MS,
   SUPER_SURGE_MIN_WIDE_LEVEL,
   WIDE_DURATION_MS,
   WORLD_HEIGHT,
@@ -413,11 +415,7 @@ function updateLevelClearBalls(game: GameState, elapsedSeconds: number, time: nu
       getBallSpeed(game, time),
       BALL_SPEED_SMOOTHING_PER_SECOND * elapsedSeconds,
     );
-    ball.centerX += ball.velocityX * elapsedSeconds;
-    ball.centerY += ball.velocityY * elapsedSeconds;
-
-    handleWallCollision(game, ball);
-    handleBrickCollisions(game, ball, time);
+    moveBallWithCollisions(game, ball, elapsedSeconds, time, false);
 
     if (ball.centerY - ball.radius <= game.worldHeight) {
       nextBalls.push(ball);
@@ -491,12 +489,7 @@ export function updateBalls(game: GameState, elapsedSeconds: number, time: numbe
       getBallSpeed(game, time),
       BALL_SPEED_SMOOTHING_PER_SECOND * elapsedSeconds,
     );
-    ball.centerX += ball.velocityX * elapsedSeconds;
-    ball.centerY += ball.velocityY * elapsedSeconds;
-
-    handleWallCollision(game, ball);
-    handlePaddleCollision(game, ball, time);
-    handleBrickCollisions(game, ball, time);
+    moveBallWithCollisions(game, ball, elapsedSeconds, time, true);
 
     if (ball.centerY - ball.radius <= game.worldHeight) {
       nextBalls.push(ball);
@@ -521,6 +514,30 @@ export function updateBalls(game: GameState, elapsedSeconds: number, time: numbe
     game.aimAngle = DEFAULT_AIM_ANGLE;
     game.status = 'lifeLost';
     serveBall(game);
+  }
+}
+
+/** 用不超过小球半径的步长推进球，避免高速漏过薄砖块或砖缝 */
+function moveBallWithCollisions(
+  game: GameState,
+  ball: Ball,
+  elapsedSeconds: number,
+  time: number,
+  includePaddle: boolean,
+) {
+  const travelDistance = Math.hypot(ball.velocityX, ball.velocityY) * elapsedSeconds;
+  const steps = Math.max(1, Math.ceil(travelDistance / BALL_RADIUS));
+  const stepSeconds = elapsedSeconds / steps;
+
+  for (let step = 0; step < steps; step += 1) {
+    ball.centerX += ball.velocityX * stepSeconds;
+    ball.centerY += ball.velocityY * stepSeconds;
+
+    handleWallCollision(game, ball);
+    if (includePaddle) {
+      handlePaddleCollision(game, ball, time);
+    }
+    handleBrickCollisions(game, ball, time);
   }
 }
 
@@ -681,9 +698,9 @@ export function applyPowerup(game: GameState, type: PowerType, time: number) {
     game.wideLevel = Math.min(PADDLE_MAX_WIDE_LEVEL, game.wideLevel + 1);
     game.wideUntil = time + WIDE_DURATION_MS;
   } else if (type === 'slow') {
-    game.slowUntil = Math.max(game.slowUntil, time + 7500);
+    game.slowUntil = Math.max(game.slowUntil, time + SLOW_DURATION_MS);
   } else if (type === 'pierce') {
-    game.pierceUntil = Math.max(game.pierceUntil, time + 8000);
+    game.pierceUntil = Math.max(game.pierceUntil, time + PIERCE_DURATION_MS);
   } else if (type === 'multi') {
     spawnFanBalls(game, game.balls.slice(), 1);
   } else if (type === 'burst') {

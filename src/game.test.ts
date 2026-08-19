@@ -6,6 +6,8 @@ import {
   DEFAULT_GAME_CONFIG,
   MAX_BRICK_HP,
   PADDLE_MAX_WIDE_LEVEL,
+  PIERCE_DURATION_MS,
+  SLOW_DURATION_MS,
   SUPER_SURGE_MIN_WIDE_LEVEL,
   WIDE_DURATION_MS,
 } from './constants';
@@ -184,6 +186,16 @@ describe('powerups', () => {
     expect(game.wideUntil).toBe(1000 + 7 * 100 + WIDE_DURATION_MS);
   });
 
+  it('refreshes slow and pierce durations from shared constants', () => {
+    const game = makeGame();
+
+    applyPowerup(game, 'slow', 500);
+    applyPowerup(game, 'pierce', 500);
+
+    expect(game.slowUntil).toBe(500 + SLOW_DURATION_MS);
+    expect(game.pierceUntil).toBe(500 + PIERCE_DURATION_MS);
+  });
+
   it('pierce removes exactly 3 hits once while touching the same brick', () => {
     const game = makeGame();
     game.status = 'playing';
@@ -202,6 +214,47 @@ describe('powerups', () => {
 describe('game state', () => {
   beforeEach(() => {
     stubStorage();
+  });
+
+  it('does not let a fast ball skip through a brick in one frame', () => {
+    const game = makeGame();
+    game.status = 'playing';
+    game.elapsedSeconds = 100;
+    game.bricks = [makeBrick({ hp: 1, maxHp: 1 })];
+    game.balls = [
+      makeBall({
+        centerX: 135,
+        centerY: 130,
+        velocityX: 0,
+        velocityY: -760,
+      }),
+    ];
+
+    updateGame(game, 0.1, 1000);
+
+    expect(game.balls).toHaveLength(1);
+    expect(game.balls[0].velocityY).toBeGreaterThan(0);
+    expect(game.bricks).toHaveLength(0);
+  });
+
+  it('bounces a rising ball back from a two-brick seam instead of pushing it sideways', () => {
+    const game = makeGame();
+    game.bricks = [
+      makeBrick({ id: 10, left: 100, top: 48 }),
+      makeBrick({ id: 11, left: 178, top: 48 }),
+    ];
+    const ball = makeBall({
+      centerX: 174,
+      centerY: 76,
+      velocityX: 0,
+      velocityY: -760,
+    });
+
+    handleBrickCollisions(game, ball, 0);
+
+    expect(ball.velocityX).toBe(0);
+    expect(ball.velocityY).toBeGreaterThan(0);
+    expect(ball.centerY).toBeGreaterThan(72);
   });
 
   it('marks level clear when no breakable bricks remain', () => {

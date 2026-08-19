@@ -269,21 +269,56 @@ export function isMobileRenderTarget(rect: Pick<DOMRect, 'width' | 'height'>) {
   return coarsePointer || rect.width < 760 || rect.height > rect.width;
 }
 
-/** 按最小重叠方向反弹小球 */
+type RectSide = 'left' | 'right' | 'top' | 'bottom';
+
+/** 按运动方向和最小重叠方向反弹小球 */
 export function reflectBallFromRect(ball: Ball, rect: RectLike) {
   const overlapLeft = ball.centerX + ball.radius - rect.left;
   const overlapRight = rect.left + rect.width - (ball.centerX - ball.radius);
   const overlapTop = ball.centerY + ball.radius - rect.top;
   const overlapBottom = rect.top + rect.height - (ball.centerY - ball.radius);
-  const minOverlap = Math.min(overlapLeft, overlapRight, overlapTop, overlapBottom);
+  let selectedSide: RectSide = 'left';
+  let selectedOverlap = Infinity;
+  let hasApproachSide = false;
 
-  if (minOverlap === overlapLeft) {
+  const considerApproach = (side: RectSide, overlap: number) => {
+    if (overlap <= 0) {
+      return;
+    }
+    if (!hasApproachSide || overlap < selectedOverlap) {
+      selectedSide = side;
+      selectedOverlap = overlap;
+      hasApproachSide = true;
+    }
+  };
+
+  if (ball.velocityX > 0) considerApproach('left', overlapLeft);
+  if (ball.velocityX < 0) considerApproach('right', overlapRight);
+  if (ball.velocityY > 0) considerApproach('top', overlapTop);
+  if (ball.velocityY < 0) considerApproach('bottom', overlapBottom);
+
+  if (!hasApproachSide) {
+    selectedSide = 'left';
+    selectedOverlap = Infinity;
+    const considerPositive = (side: RectSide, overlap: number) => {
+      if (overlap > 0 && overlap < selectedOverlap) {
+        selectedSide = side;
+        selectedOverlap = overlap;
+      }
+    };
+    considerPositive('left', overlapLeft);
+    considerPositive('right', overlapRight);
+    considerPositive('top', overlapTop);
+    considerPositive('bottom', overlapBottom);
+  }
+
+  if (selectedSide === 'left') {
     ball.centerX = rect.left - ball.radius - 0.5;
     ball.velocityX = -Math.abs(ball.velocityX);
-  } else if (minOverlap === overlapRight) {
+  } else if (selectedSide === 'right') {
     ball.centerX = rect.left + rect.width + ball.radius + 0.5;
     ball.velocityX = Math.abs(ball.velocityX);
-  } else if (minOverlap === overlapTop) {
+  } else if (selectedSide === 'top') {
     ball.centerY = rect.top - ball.radius - 0.5;
     ball.velocityY = -Math.abs(ball.velocityY);
   } else {
