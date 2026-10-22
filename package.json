@@ -10,14 +10,15 @@
     "test": "vitest run",
     "lint": "bun run lint:js && bun run lint:style && bun run format:check",
     "lint:fix": "bun run lint:js:fix && bun run lint:style:fix && bun run format",
-    "lint:js": "eslint . --ext .js,.jsx,.ts,.tsx",
-    "lint:js:fix": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
-    "lint:style": "stylelint \"src/**/*.{css,less}\"",
-    "lint:style:fix": "stylelint \"src/**/*.{css,less}\" --fix",
+    "lint:js": "eslint . --ext .js,.ts",
+    "lint:js:fix": "eslint . --ext .js,.ts --fix",
+    "lint:style": "stylelint \"src/**/*.css\"",
+    "lint:style:fix": "stylelint \"src/**/*.css\" --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "precommit": "lint-staged",
-    "prepare": "husky"
+    "prepare": "husky",
+    "typecheck": "tsc --noEmit"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
@@ -31,32 +32,18 @@
     "*.{json,md,html}": "prettier --write",
     "*.svg": "prettier --write --parser html"
   },
-  "dependencies": {
-    "i18next": "^26.3.6",
-    "react": "18.3.1",
-    "react-dom": "18.3.1",
-    "react-i18next": "^17.0.11"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "@types/react": "18.3.12",
-    "@types/react-dom": "18.3.1",
     "@typescript-eslint/eslint-plugin": "^8.38.0",
     "@typescript-eslint/parser": "^8.38.0",
-    "@vitejs/plugin-react": "4.3.4",
     "eslint": "^8.57.1",
     "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-simple-import-sort": "^12.1.1",
     "husky": "9.1.7",
-    "less": "^4.3.0",
     "lint-staged": "15.2.11",
-    "postcss-less": "^6.0.0",
     "prettier": "3.3.3",
     "stylelint": "^16.22.0",
     "stylelint-config-standard": "^36.0.1",
-    "stylelint-config-standard-less": "^3.0.1",
-    "stylelint-order": "^6.0.4",
     "typescript": "5.6.3",
     "vite": "5.4.11",
     "vitest": "2.1.9"

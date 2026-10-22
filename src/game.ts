@@ -1,949 +1,952 @@
-import { playSound } from './audio';
+// 游戏规则与模拟：纯逻辑，不依赖 DOM。表现层（渲染/音效/UI）通过 events 队列获知发生了什么。
+import type { PowerType, TimedPower } from './config';
 import {
-  BALL_BASE_SPEED,
-  BALL_MAX_SPEED,
-  BALL_PADDLE_GAP,
-  BALL_RADIUS,
-  BALL_SPEED_GROWTH_PER_SECOND,
-  BALL_SPEED_SMOOTHING_PER_SECOND,
-  BALL_SURGE_NORMAL_HP,
-  BALL_SURGE_SUPER_HP,
-  BALL_SURGE_THRESHOLD,
-  BRICK_HIT_TEST_TOP,
-  BRICK_TOP,
-  DEFAULT_AIM_ANGLE,
-  MAX_AIM_ANGLE,
-  MAX_BRICK_HP,
-  MAX_PARTICLES,
-  MIN_AIM_ANGLE,
-  MOBILE_MAX_PARTICLES,
-  PADDLE_BASE_WIDTH,
-  PADDLE_BOTTOM_GAP,
-  PADDLE_HEIGHT,
-  PADDLE_MAX_WIDE_LEVEL,
-  PADDLE_SPEED,
-  PIERCE_DAMAGE,
-  PIERCE_DURATION_MS,
-  PORTRAIT_PADDLE_BOTTOM_GAP,
-  POWERUPS,
-  SLOW_DURATION_MS,
-  SUPER_SURGE_MIN_WIDE_LEVEL,
-  WIDE_DURATION_MS,
-  WORLD_HEIGHT,
-  WORLD_WIDTH,
-} from './constants';
-import {
-  circleIntersectsBrick,
-  circleIntersectsRect,
-  getPaddleRect,
-  getPaddleWidth,
-  movePaddleTo,
-  powerupToBall,
-  reflectBallFromBrick,
-} from './geometry';
-import { getActionLabel, getPowerupLabel } from './i18n';
-import { persistStoredState } from './storage';
-import type {
-  Ball,
-  Brick,
-  GameConfig,
-  GameState,
-  ObstacleShape,
-  PowerType,
-  Snapshot,
-  StoredState,
-} from './types';
-import { clamp, nextId, seededRandom } from './utils';
+  BALL_R,
+  BALL_SPEED,
+  brickColor,
+  CELL_H,
+  CELL_W,
+  H,
+  ITEM_H,
+  ITEM_W,
+  LIVES,
+  MAX_BALLS,
+  MAX_BOUNCE,
+  MAX_LIVES,
+  MIN_AIM,
+  MIN_VERTICAL,
+  PADDLE_H,
+  PADDLE_KEY_SPEED,
+  PADDLE_MAX_SPEED,
+  PADDLE_W,
+  PADDLE_Y,
+  POWER_ORDER,
+  POWERS,
+  SHIELD_Y,
+  TIMED,
+  W,
+} from './config';
+import type { AABB, CapsuleShape, Shape, Vec } from './geometry';
+import { circleOverlap, clamp, reflect, shapeAABB, sweepCircle } from './geometry';
+import type { BodyDef, BodyKind, BrickType, LevelDef } from './levels';
+import { motionAt, worldShape } from './levels';
+import type { Rng } from './rng';
+import { createRng } from './rng';
 
-/** 创建一局完整游戏状态 */
-export function createGame(storedState: StoredState): GameState {
-  const game: GameState = {
-    ...storedState,
-    config: { ...storedState.config },
-    level: storedState.highestUnlocked,
-    score: 0,
-    levelStartScore: 0,
-    lives: 3,
-    status: 'ready',
-    elapsedSeconds: 0,
-    nextId: 1,
-    balls: [],
-    bricks: [],
-    powerups: [],
-    particles: [],
-    worldWidth: WORLD_WIDTH,
-    worldHeight: WORLD_HEIGHT,
-    paddle: {
-      centerX: WORLD_WIDTH / 2,
-      top: getPaddleTop(WORLD_HEIGHT),
-      width: PADDLE_BASE_WIDTH,
-      height: PADDLE_HEIGHT,
-    },
-    aimAngle: DEFAULT_AIM_ANGLE,
-    keyboardDirection: 0,
-    wideLevel: 0,
-    wideUntil: 0,
-    slowUntil: 0,
-    pierceUntil: 0,
-    ballSurgeApplied: false,
-    levelClearAt: 0,
-    shake: 0,
-    lastFrameTime: performance.now(),
-    lastSnapshotTime: 0,
-    lastSoundTimes: {},
-    audioContext: null,
+export type Phase = 'aim' | 'play' | 'clear' | 'lost';
+export type Mode = 'campaign' | 'endless' | 'demo';
+
+export interface Body {
+  def: BodyDef;
+  kind: BodyKind;
+  brick: BrickType;
+  x: number;
+  y: number;
+  angle: number;
+  shape: Shape;
+  aabb: AABB;
+  hp: number;
+  maxHp: number;
+  alive: boolean;
+  /** 受击闪光剩余时间（秒） */
+  flash: number;
+  /** 受击弹跳动画 1 → 0 */
+  pulse: number;
+}
+
+export interface Ball {
+  id: number;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  /** 弹射器带来的临时加速倍率，逐渐回落到 1 */
+  boost: number;
+  stuck: boolean;
+  stuckOffset: number;
+  stuckTime: number;
+  /** 距上次有效碰撞（砖块/挡板）的时间，用于防止无限循环 */
+  idle: number;
+  portalCd: number;
+  lost: boolean;
+}
+
+export interface Item {
+  type: PowerType;
+  x: number;
+  y: number;
+  vy: number;
+  age: number;
+  dead: boolean;
+}
+
+export interface Laser {
+  x: number;
+  y: number;
+  dead: boolean;
+}
+
+export interface Paddle {
+  x: number;
+  targetX: number;
+  w: number;
+  flash: number;
+}
+
+export type GameEvent =
+  | { type: 'launch'; x: number; y: number }
+  | { type: 'wall'; x: number; y: number }
+  | { type: 'paddle'; x: number; y: number }
+  | { type: 'blocker'; x: number; y: number }
+  | { type: 'bumper'; x: number; y: number }
+  | { type: 'brickHit'; x: number; y: number; color: string; combo: number }
+  | {
+      type: 'brickBreak';
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      color: string;
+      combo: number;
+      points: number;
+      brick: BrickType;
+    }
+  | { type: 'explode'; x: number; y: number; big: boolean }
+  | { type: 'portal'; x: number; y: number; x2: number; y2: number }
+  | { type: 'power'; power: PowerType; x: number; y: number }
+  | { type: 'laser'; x: number; y: number }
+  | { type: 'shield'; x: number; y: number }
+  | { type: 'combo'; combo: number }
+  | { type: 'lifeLost'; lives: number }
+  | { type: 'clear' }
+  | { type: 'gameOver' };
+
+export interface Keys {
+  left: boolean;
+  right: boolean;
+}
+
+interface CastHit {
+  t: number;
+  nx: number;
+  ny: number;
+  kind: 'wall' | 'paddle' | 'shield' | 'body';
+  body: Body | null;
+}
+
+interface Explosion {
+  x: number;
+  y: number;
+  delay: number;
+  big: boolean;
+}
+
+const AIM_KEY_SPEED = 1.5;
+const LASER_SPEED = 900;
+const SERVE_Y = PADDLE_Y - PADDLE_H / 2 - BALL_R - 0.5;
+
+export class Game {
+  readonly level: LevelDef;
+  readonly mode: Mode;
+  phase: Phase = 'aim';
+  phaseTime = 0;
+  /** 机关运动时钟（暂停时冻结） */
+  clock = 0;
+  /** 本关实际游戏时间（只在 play 阶段累计） */
+  time = 0;
+  bodies: Body[] = [];
+  balls: Ball[] = [];
+  items: Item[] = [];
+  lasers: Laser[] = [];
+  paddle: Paddle = { x: W / 2, targetX: W / 2, w: PADDLE_W, flash: 0 };
+  lives = LIVES;
+  livesLost = 0;
+  score: number;
+  combo = 0;
+  maxCombo = 0;
+  aimAngle = Math.PI / 2;
+  clearBonus = 0;
+  bricksLeft = 0;
+  effects: Record<TimedPower, number> = {
+    wide: 0,
+    shrink: 0,
+    slow: 0,
+    fast: 0,
+    pierce: 0,
+    laser: 0,
+    magnet: 0,
+    shield: 0,
   };
+  events: GameEvent[] = [];
 
-  resetLevel(game, game.level);
-  return game;
-}
+  private rng: Rng;
+  private ballId = 1;
+  private laserCd = 0;
+  private explosions: Explosion[] = [];
+  private moving: Body[] = [];
+  private partner = new Map<Body, Body>();
 
-/** 初始化整关：生命、临时效果、砖块布局和待发球状态都从头开始 */
-export function resetLevel(game: GameState, level: number) {
-  game.level = level;
-  game.lives = 3;
-  game.status = 'ready';
-  game.elapsedSeconds = 0;
-  game.levelClearAt = 0;
-  game.ballSurgeApplied = false;
-  game.aimAngle = DEFAULT_AIM_ANGLE;
-  game.keyboardDirection = 0;
-  resetLifeEffects(game);
-  game.shake = 0;
-  game.particles = [];
-  game.paddle.top = getPaddleTop(game.worldHeight);
-  game.paddle.centerX = game.worldWidth / 2;
-  game.paddle.width = getConfiguredPaddleWidth(game);
-  game.bricks = generateBricks(game, level);
-  serveBall(game);
-}
-
-/** 重试当前关卡并回滚到本关开始分数 */
-export function retryLevel(game: GameState) {
-  game.score = game.levelStartScore;
-  resetLevel(game, game.level);
-}
-
-/** 进入下一关并记录本关起始分数 */
-export function goToNextLevel(game: GameState) {
-  game.level += 1;
-  game.levelStartScore = game.score;
-  resetLevel(game, game.level);
-  persistStoredState(game);
-}
-
-/** 每次待发球都先创建贴在挡板上方的小球 */
-export function serveBall(game: GameState) {
-  game.balls = [
-    {
-      id: nextId(game),
-      centerX: game.paddle.centerX,
-      centerY: game.paddle.top - BALL_RADIUS,
-      radius: BALL_RADIUS,
-      velocityX: 0,
-      velocityY: 0,
-      piercingBrickIds: [],
-    },
-  ];
-}
-
-/** 同步当前视口对应的逻辑尺寸，竖屏时使用更窄更高的游戏世界 */
-export function syncGameLayout(game: GameState, worldWidth: number, worldHeight: number) {
-  if (
-    Math.abs(game.worldWidth - worldWidth) < 0.5 &&
-    Math.abs(game.worldHeight - worldHeight) < 0.5
-  ) {
-    return;
-  }
-
-  const centerRatio = game.paddle.centerX / game.worldWidth;
-  const shouldRegenerateBricks =
-    (game.status === 'ready' || game.status === 'aiming') &&
-    game.lives === 3 &&
-    game.score === game.levelStartScore;
-  game.worldWidth = worldWidth;
-  game.worldHeight = worldHeight;
-  game.paddle.centerX = worldWidth * centerRatio;
-  game.paddle.top = getPaddleTop(worldHeight);
-  game.paddle.width = getConfiguredPaddleWidth(game);
-  movePaddleTo(game, game.paddle.centerX);
-  if (shouldRegenerateBricks) {
-    game.bricks = generateBricks(game, game.level);
-  }
-  if (game.status === 'ready' || game.status === 'aiming' || game.status === 'lifeLost') {
-    attachReadyBall(game);
-  }
-}
-
-/** 由逻辑世界高度推导挡板 Y 坐标，保持底部安全距离一致 */
-export function getPaddleTop(worldHeight: number) {
-  return (
-    worldHeight -
-    (worldHeight > WORLD_HEIGHT ? PORTRAIT_PADDLE_BOTTOM_GAP : PADDLE_BOTTOM_GAP)
-  );
-}
-
-/** 根据当前瞄准角度发射待发球 */
-export function launchAimedBall(game: GameState, time: number) {
-  const ball = game.balls[0];
-  if (!ball) {
-    serveBall(game);
-  }
-
-  game.elapsedSeconds = 0;
-  game.levelClearAt = 0;
-  const speed = getBallSpeed(game, time);
-  const targetBall = game.balls[0];
-  targetBall.velocityX = Math.cos(game.aimAngle) * speed;
-  targetBall.velocityY = Math.sin(game.aimAngle) * speed;
-  game.status = 'playing';
-}
-
-/** 根据玩家指向的位置更新发球瞄准角度 */
-export function aimAtPoint(game: GameState, worldX: number, worldY: number) {
-  const ball = game.balls[0];
-  const originX = ball?.centerX ?? game.paddle.centerX;
-  const originY = ball?.centerY ?? game.paddle.top - BALL_RADIUS;
-  const rawAngle = Math.atan2(worldY - originY, worldX - originX);
-  game.aimAngle = clamp(rawAngle, MIN_AIM_ANGLE, MAX_AIM_ANGLE);
-}
-
-type BrickLayoutMode = 'grid' | 'stagger' | 'hollow' | 'maze';
-
-/** 根据关卡号选择砖阵形态，让难度增加时有交叉、镂空和拦截物迷宫变化 */
-function getBrickLayoutMode(level: number): BrickLayoutMode {
-  if (level === 1) {
-    return 'grid';
-  }
-
-  const modes: BrickLayoutMode[] = ['stagger', 'hollow', 'maze', 'grid'];
-  return modes[(level - 2) % modes.length];
-}
-
-/** 镂空布局保留外圈砖块，内部挖出可预判的空洞 */
-function shouldSkipBrickCell(
-  layoutMode: BrickLayoutMode,
-  row: number,
-  column: number,
-  rows: number,
-  columns: number,
-) {
-  if (layoutMode !== 'hollow') {
-    return false;
-  }
-
-  const isEdgeCell =
-    row === 0 || column === 0 || row === rows - 1 || column === columns - 1;
-  if (isEdgeCell) {
-    return false;
-  }
-
-  const centerRow = Math.floor(rows / 2);
-  const centerColumn = Math.floor(columns / 2);
-  const isCenterHole =
-    Math.abs(row - centerRow) <= 1 && Math.abs(column - centerColumn) <= 1;
-  const isSideHole = row % 2 === 0 && (column + row) % 5 === 0;
-  return isCenterHole || isSideHole;
-}
-
-/** 迷宫布局用不会破碎的拦截物做简单折线路径，仍然保留足够可破坏砖块 */
-function isMazeObstacleCell(row: number, column: number, rows: number, columns: number) {
-  const isInnerCell = row > 0 && row < rows - 1 && column > 0 && column < columns - 1;
-  if (!isInnerCell) {
-    return false;
-  }
-
-  const leftWall =
-    column === Math.max(1, Math.floor(columns * 0.34)) &&
-    row > 1 &&
-    row < rows - 2 &&
-    row % 4 !== 2;
-  const rightWall =
-    column === Math.min(columns - 2, Math.ceil(columns * 0.66)) &&
-    row > 1 &&
-    row < rows - 2 &&
-    row % 4 !== 1;
-  const crossWall =
-    row === Math.floor(rows * 0.55) &&
-    column > 1 &&
-    column < columns - 2 &&
-    column % 3 !== 0;
-  return leftWall || rightWall || crossWall;
-}
-
-/** 拦截物外形按格子稳定轮换，全部限制在单个砖块格内 */
-const OBSTACLE_SHAPES: ObstacleShape[] = [
-  'slopeLeft',
-  'slopeRight',
-  'wedgeLeft',
-  'wedgeRight',
-  'diamond',
-  'circle',
-  'block',
-];
-
-/** 根据关卡和格子位置选择拦截物外部形状 */
-function getObstacleShape(level: number, row: number, column: number) {
-  return OBSTACLE_SHAPES[(level + row * 2 + column * 3) % OBSTACLE_SHAPES.length];
-}
-
-/** 判断格子是否已被布局规则排除 */
-function isBlockedBrickCell(
-  layoutMode: BrickLayoutMode,
-  row: number,
-  column: number,
-  rows: number,
-  columns: number,
-) {
-  const staggerTailCell =
-    layoutMode === 'stagger' && row % 2 === 1 && column === columns - 1;
-  return (
-    column < 0 ||
-    column >= columns ||
-    row < 0 ||
-    row >= rows ||
-    staggerTailCell ||
-    shouldSkipBrickCell(layoutMode, row, column, rows, columns)
-  );
-}
-
-/** 关卡按关卡号稳定生成，拦截物保持单格网格对齐，避免空洞和重叠 */
-export function generateBricks(game: GameState, level: number) {
-  const random = seededRandom(level * 1009);
-  const webColumns = clamp(10 + Math.floor((level - 1) / 3), 10, 16);
-  const webRows = clamp(4 + Math.floor(level / 2), 4, 11);
-  const portraitLayout = game.worldWidth < WORLD_WIDTH;
-  const columns = portraitLayout ? Math.ceil(webColumns / 2) : webColumns;
-  const rows = portraitLayout ? webRows * 2 : webRows;
-  const layoutMode = getBrickLayoutMode(level);
-  const gap = clamp(8 - Math.floor((level - 1) / 8), 5, 8);
-  const sidePadding = BALL_RADIUS * 4;
-  const brickHeight = clamp(28 - Math.floor((level - 1) / 6) * 2, 20, 28);
-  const brickWidth = (game.worldWidth - sidePadding * 2 - gap * (columns - 1)) / columns;
-  const maxObstacles =
-    layoutMode === 'maze'
-      ? Math.min(4 + Math.floor(level / 2), Math.floor(columns * rows * 0.18))
-      : Math.min(2 + Math.floor(level / 3), Math.floor(columns * rows * 0.12));
-  const bricks: Brick[] = [];
-  let obstacleCount = 0;
-
-  for (let row = 0; row < rows; row += 1) {
-    const rowOffset =
-      layoutMode === 'stagger' && row % 2 === 1 ? (brickWidth + gap) / 2 : 0;
-    for (let column = 0; column < columns; column += 1) {
-      if (isBlockedBrickCell(layoutMode, row, column, rows, columns)) {
-        continue;
+  constructor(level: LevelDef, opts: { mode: Mode; seed?: number; score?: number }) {
+    this.level = level;
+    this.mode = opts.mode;
+    this.score = opts.score ?? 0;
+    this.rng = createRng(opts.seed ?? 12345);
+    const portals = new Map<number, Body>();
+    for (const def of level.bodies) {
+      const tr = motionAt(def, 0);
+      const shape = worldShape(def.shape, tr.x, tr.y, tr.angle);
+      const body: Body = {
+        def,
+        kind: def.kind,
+        brick: def.brick,
+        x: tr.x,
+        y: tr.y,
+        angle: tr.angle,
+        shape,
+        aabb: shapeAABB(shape),
+        hp: def.hp,
+        maxHp: def.hp,
+        alive: true,
+        flash: 0,
+        pulse: 0,
+      };
+      this.bodies.push(body);
+      if (def.motion) this.moving.push(body);
+      if (def.kind === 'brick') this.bricksLeft++;
+      if (def.kind === 'portal') {
+        const other = portals.get(def.pair);
+        if (other) {
+          this.partner.set(body, other);
+          this.partner.set(other, body);
+        } else portals.set(def.pair, body);
       }
+    }
+    this.serve();
+  }
 
-      const canPlaceObstacle = row > 0 && row < rows - 1 && obstacleCount < maxObstacles;
-      const mazeObstacle =
-        layoutMode === 'maze' && isMazeObstacleCell(row, column, rows, columns);
-      const randomObstacle =
-        layoutMode !== 'maze' && random() < Math.min(0.04 + level * 0.006, 0.13);
-      const obstacle = canPlaceObstacle && (mazeObstacle || randomObstacle);
-      if (obstacle) {
-        obstacleCount += 1;
+  // ───────────────────────── 输入接口 ─────────────────────────
+
+  aimAt(px: number, py: number): void {
+    const b = this.balls[0];
+    if (this.phase !== 'aim' || !b) return;
+    let a = Math.atan2(b.y - py, px - b.x);
+    if (a < MIN_AIM || a > Math.PI - MIN_AIM) a = px >= b.x ? MIN_AIM : Math.PI - MIN_AIM;
+    this.aimAngle = a;
+  }
+
+  nudgeAim(delta: number): void {
+    this.aimAngle = clamp(this.aimAngle + delta, MIN_AIM, Math.PI - MIN_AIM);
+  }
+
+  movePaddleTo(x: number): void {
+    if (this.phase === 'play') this.paddle.targetX = x;
+  }
+
+  movePaddleBy(dx: number): void {
+    if (this.phase === 'play') this.paddle.targetX += dx;
+  }
+
+  /** 瞄准阶段发射；游戏中释放被磁力吸住的球 */
+  launch(): void {
+    if (this.phase === 'aim') {
+      const b = this.balls[0];
+      if (!b) return;
+      b.stuck = false;
+      b.dx = Math.cos(this.aimAngle);
+      b.dy = -Math.sin(this.aimAngle);
+      this.setPhase('play');
+      this.emit({ type: 'launch', x: b.x, y: b.y });
+    } else if (this.phase === 'play') {
+      for (const b of this.balls) if (b.stuck) this.release(b);
+    }
+  }
+
+  hasStuckBall(): boolean {
+    return this.phase === 'play' && this.balls.some((b) => b.stuck);
+  }
+
+  get stars(): number {
+    return Math.max(1, 3 - this.livesLost);
+  }
+
+  drainEvents(): GameEvent[] {
+    const e = this.events;
+    this.events = [];
+    return e;
+  }
+
+  // ───────────────────────── 主循环 ─────────────────────────
+
+  update(dt: number, keys: Keys): void {
+    this.clock += dt;
+    this.phaseTime += dt;
+    if (this.phase === 'play') this.time += dt;
+    this.updateBodies(dt);
+
+    if (this.phase === 'aim' || this.phase === 'play') {
+      const dir = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+      if (dir && this.phase === 'aim') this.nudgeAim(-dir * AIM_KEY_SPEED * dt);
+      if (dir && this.phase === 'play')
+        this.paddle.targetX += dir * PADDLE_KEY_SPEED * dt;
+      this.updateEffects(dt);
+    }
+    this.updatePaddle(dt);
+
+    for (const b of this.balls) this.stepBall(b, dt);
+    if (this.balls.some((b) => b.lost)) this.balls = this.balls.filter((b) => !b.lost);
+
+    this.updateItems(dt);
+    this.updateLasers(dt);
+    this.updateExplosions(dt);
+
+    if (this.phase === 'play' && this.balls.length === 0) this.loseLife();
+  }
+
+  // ───────────────────────── 预测瞄准线 ─────────────────────────
+
+  predictPath(maxLen = 640, maxBounces = 2): { pts: Vec[]; ghost: Vec | null } {
+    const b = this.balls[0];
+    if (!b) return { pts: [], ghost: null };
+    let x = b.x;
+    let y = b.y;
+    let dx = Math.cos(this.aimAngle);
+    let dy = -Math.sin(this.aimAngle);
+    const pts: Vec[] = [{ x, y }];
+    let ghost: Vec | null = null;
+    let remaining = maxLen;
+    for (let i = 0; i <= maxBounces && remaining > 0; i++) {
+      const h = this.cast(x, y, dx, dy, remaining, false);
+      if (!h) {
+        pts.push({ x: x + dx * remaining, y: y + dy * remaining });
+        break;
       }
+      x += dx * h.t;
+      y += dy * h.t;
+      remaining -= h.t;
+      pts.push({ x, y });
+      if (!ghost && h.body?.kind === 'brick') ghost = { x, y };
+      const r = reflect(dx, dy, h.nx, h.ny);
+      dx = r.x;
+      dy = r.y;
+    }
+    return { pts, ghost };
+  }
 
-      const maxLevelHp = clamp(3 + Math.floor((level - 1) / 3), 3, MAX_BRICK_HP);
-      const hardChance = Math.min(0.05 + level * 0.018, 0.42);
-      const mediumChance = Math.min(0.16 + level * 0.022, 0.46);
-      const roll = random();
-      const toughHp = 3 + Math.floor(Math.pow(random(), 1.7) * (maxLevelHp - 2));
-      const maxHp = obstacle
-        ? 99
-        : roll < hardChance
-          ? toughHp
-          : roll < hardChance + mediumChance
-            ? 2
-            : 1;
+  paddleShape(): CapsuleShape {
+    const p = this.paddle;
+    const r = PADDLE_H / 2;
+    const half = Math.max(0, p.w / 2 - r);
+    return {
+      kind: 'capsule',
+      ax: p.x - half,
+      ay: PADDLE_Y,
+      bx: p.x + half,
+      by: PADDLE_Y,
+      r,
+    };
+  }
 
-      bricks.push({
-        id: nextId(game),
-        left: sidePadding + rowOffset + column * (brickWidth + gap),
-        top: BRICK_TOP + row * (brickHeight + gap),
-        width: brickWidth,
-        height: brickHeight,
-        hp: maxHp,
-        maxHp,
-        obstacle,
-        obstacleShape: obstacle ? getObstacleShape(level, row, column) : 'block',
-      });
+  // ───────────────────────── 内部实现 ─────────────────────────
+
+  private emit(e: GameEvent): void {
+    this.events.push(e);
+  }
+
+  private setPhase(p: Phase): void {
+    this.phase = p;
+    this.phaseTime = 0;
+  }
+
+  private makeBall(x: number, y: number): Ball {
+    return {
+      id: this.ballId++,
+      x,
+      y,
+      dx: 0,
+      dy: -1,
+      boost: 1,
+      stuck: false,
+      stuckOffset: 0,
+      stuckTime: 0,
+      idle: 0,
+      portalCd: 0,
+      lost: false,
+    };
+  }
+
+  private serve(): void {
+    const b = this.makeBall(this.paddle.x, SERVE_Y);
+    b.stuck = true;
+    b.stuckTime = Infinity;
+    this.balls = [b];
+    this.aimAngle = Math.PI / 2;
+    this.setPhase('aim');
+  }
+
+  private speedOf(b: Ball): number {
+    const ramp = Math.min(0.2, this.time / 600);
+    let s = BALL_SPEED * this.level.speed * (1 + ramp) * b.boost;
+    if (this.effects.slow > 0) s *= 0.62;
+    if (this.effects.fast > 0) s *= 1.3;
+    return s;
+  }
+
+  private addScore(n: number): void {
+    // 结算后仍模拟离场动效，但成绩不再变化
+    if (this.phase === 'clear' || this.phase === 'lost') return;
+    this.score += n;
+  }
+
+  private updateBodies(dt: number): void {
+    for (const b of this.moving) {
+      if (!b.alive) continue;
+      const tr = motionAt(b.def, this.clock);
+      b.x = tr.x;
+      b.y = tr.y;
+      b.angle = tr.angle;
+      b.shape = worldShape(b.def.shape, tr.x, tr.y, tr.angle);
+      b.aabb = shapeAABB(b.shape);
+    }
+    for (const b of this.bodies) {
+      if (b.flash > 0) b.flash -= dt;
+      if (b.pulse > 0) b.pulse = Math.max(0, b.pulse - dt * 5);
     }
   }
 
-  return bricks;
-}
-
-/** 每帧更新顺序：先更新可视状态，只有游戏中继续推进球和道具 */
-export function updateGame(game: GameState, elapsedSeconds: number, time: number) {
-  updatePaddleWidth(game, time);
-  attachReadyBall(game);
-  updateParticles(game, elapsedSeconds);
-  game.shake = Math.max(0, game.shake - elapsedSeconds * 18);
-
-  if (game.status === 'levelClear') {
-    updateLevelClearBalls(game, elapsedSeconds, time);
-    return;
-  }
-
-  if (game.status !== 'playing') {
-    return;
-  }
-
-  game.elapsedSeconds += elapsedSeconds;
-
-  if (game.keyboardDirection !== 0) {
-    movePaddleTo(
-      game,
-      game.paddle.centerX + game.keyboardDirection * PADDLE_SPEED * elapsedSeconds,
-    );
-  }
-
-  updateBalls(game, elapsedSeconds, time);
-  updatePowerups(game, elapsedSeconds, time);
-  checkLevelClear(game, time);
-}
-
-/** 通关弹窗背后保留球和道具自然运动，不再碰挡板或结算死亡 */
-function updateLevelClearBalls(game: GameState, elapsedSeconds: number, time: number) {
-  const nextBalls: Ball[] = [];
-
-  for (const ball of game.balls) {
-    normalizeBallSpeed(
-      ball,
-      getBallSpeed(game, time),
-      BALL_SPEED_SMOOTHING_PER_SECOND * elapsedSeconds,
-    );
-    moveBallWithCollisions(game, ball, elapsedSeconds, time, false);
-
-    if (ball.centerY - ball.radius <= game.worldHeight) {
-      nextBalls.push(ball);
+  private updateEffects(dt: number): void {
+    for (const k of TIMED) {
+      if (this.effects[k] <= 0) continue;
+      this.effects[k] = Math.max(0, this.effects[k] - dt);
+      if (k === 'magnet' && this.effects.magnet === 0)
+        for (const b of this.balls) if (b.stuck) this.release(b);
     }
   }
 
-  game.balls = nextBalls;
-  updateLevelClearPowerups(game, elapsedSeconds);
-}
-
-/** 通关后掉落道具只继续下落并离场，不再被挡板拾取 */
-function updateLevelClearPowerups(game: GameState, elapsedSeconds: number) {
-  game.powerups = game.powerups.filter((powerup) => {
-    powerup.centerY += powerup.velocityY * elapsedSeconds;
-    return powerup.centerY - powerup.size <= game.worldHeight;
-  });
-}
-
-/** 挡板宽度由加宽等级决定，过期后回到基础宽度 */
-export function updatePaddleWidth(game: GameState, time: number) {
-  if (game.wideLevel > 0 && time >= game.wideUntil) {
-    game.wideLevel = 0;
-    game.wideUntil = 0;
-  }
-
-  game.paddle.width = getConfiguredPaddleWidth(game);
-  movePaddleTo(game, game.paddle.centerX);
-}
-
-/** 更新玩法配置，并立即同步依赖配置的挡板宽度 */
-export function setGameConfig(
-  game: GameState,
-  config: GameConfig,
-  time = performance.now(),
-) {
-  game.config = { ...config };
-  if (game.balls.length > game.config.maxBalls) {
-    game.balls = game.balls.slice(0, game.config.maxBalls);
-  }
-  applyBallSurgeBrickHp(game);
-  updatePaddleWidth(game, time);
-  attachReadyBall(game);
-}
-
-function getConfiguredPaddleWidth(game: GameState) {
-  const wideLevel =
-    game.config.brickSurgeMode === 'super' && game.ballSurgeApplied
-      ? Math.max(game.wideLevel, SUPER_SURGE_MIN_WIDE_LEVEL)
-      : game.wideLevel;
-  return getPaddleWidth(wideLevel, game.worldWidth);
-}
-
-/** 待发球和瞄准时球固定悬停在挡板上方 */
-export function attachReadyBall(game: GameState) {
-  if (
-    (game.status === 'ready' || game.status === 'aiming' || game.status === 'lifeLost') &&
-    game.balls[0]
-  ) {
-    game.balls[0].centerX = game.paddle.centerX;
-    game.balls[0].centerY = game.paddle.top - game.balls[0].radius;
-  }
-}
-
-/** 场上允许多球，只有所有球都掉落才扣生命 */
-export function updateBalls(game: GameState, elapsedSeconds: number, time: number) {
-  const nextBalls: Ball[] = [];
-
-  for (const ball of game.balls) {
-    normalizeBallSpeed(
-      ball,
-      getBallSpeed(game, time),
-      BALL_SPEED_SMOOTHING_PER_SECOND * elapsedSeconds,
-    );
-    moveBallWithCollisions(game, ball, elapsedSeconds, time, true);
-
-    if (ball.centerY - ball.radius <= game.worldHeight) {
-      nextBalls.push(ball);
+  private updatePaddle(dt: number): void {
+    const p = this.paddle;
+    const targetW =
+      PADDLE_W * (this.effects.wide > 0 ? 1.5 : 1) * (this.effects.shrink > 0 ? 0.62 : 1);
+    p.w += (targetW - p.w) * Math.min(1, dt * 10);
+    const half = p.w / 2;
+    p.targetX = clamp(p.targetX, half, W - half);
+    if (this.phase === 'play') {
+      const step = PADDLE_MAX_SPEED * dt;
+      p.x += clamp(p.targetX - p.x, -step, step);
     }
+    p.x = clamp(p.x, half, W - half);
+    if (p.flash > 0) p.flash -= dt;
   }
 
-  game.balls = nextBalls;
-
-  if (game.balls.length > 0) {
-    return;
-  }
-
-  game.lives -= 1;
-  playSound(game, 'lose');
-  if (game.lives <= 0) {
-    game.status = 'gameOver';
-    game.bestScore = Math.max(game.bestScore, game.score);
-    persistStoredState(game);
-  } else {
-    game.elapsedSeconds = 0;
-    resetLifeEffects(game);
-    game.aimAngle = DEFAULT_AIM_ANGLE;
-    game.status = 'lifeLost';
-    serveBall(game);
-  }
-}
-
-/** 用不超过小球半径的步长推进球，避免高速漏过薄砖块或砖缝 */
-function moveBallWithCollisions(
-  game: GameState,
-  ball: Ball,
-  elapsedSeconds: number,
-  time: number,
-  includePaddle: boolean,
-) {
-  const travelDistance = Math.hypot(ball.velocityX, ball.velocityY) * elapsedSeconds;
-  const steps = Math.max(1, Math.ceil(travelDistance / BALL_RADIUS));
-  const stepSeconds = elapsedSeconds / steps;
-
-  for (let step = 0; step < steps; step += 1) {
-    ball.centerX += ball.velocityX * stepSeconds;
-    ball.centerY += ball.velocityY * stepSeconds;
-
-    handleWallCollision(game, ball);
-    if (includePaddle) {
-      handlePaddleCollision(game, ball, time);
-    }
-    handleBrickCollisions(game, ball, time);
-  }
-}
-
-/** 复活时清掉所有临时加成和未接住的掉落道具 */
-export function resetLifeEffects(game: GameState) {
-  game.wideLevel = 0;
-  game.wideUntil = 0;
-  game.paddle.width = getConfiguredPaddleWidth(game);
-  game.slowUntil = 0;
-  game.pierceUntil = 0;
-  game.powerups = [];
-}
-
-/** 处理球和墙体的反弹 */
-export function handleWallCollision(game: GameState, ball: Ball) {
-  if (ball.centerX - ball.radius < 0) {
-    ball.centerX = ball.radius;
-    ball.velocityX = Math.abs(ball.velocityX);
-    playSound(game, 'wall');
-  } else if (ball.centerX + ball.radius > game.worldWidth) {
-    ball.centerX = game.worldWidth - ball.radius;
-    ball.velocityX = -Math.abs(ball.velocityX);
-    playSound(game, 'wall');
-  }
-
-  if (ball.centerY - ball.radius < 0) {
-    ball.centerY = ball.radius;
-    ball.velocityY = Math.abs(ball.velocityY);
-    playSound(game, 'wall');
-  }
-}
-
-/** 处理球和挡板的反弹，并按命中位置改变水平速度 */
-export function handlePaddleCollision(game: GameState, ball: Ball, time: number) {
-  const paddleRect = getPaddleRect(game.paddle);
-  if (ball.velocityY <= 0 || !circleIntersectsRect(ball, paddleRect)) {
-    return;
-  }
-
-  const speed = getCollisionBallSpeed(ball, getBallSpeed(game, time));
-  const hitRatio = clamp(
-    (ball.centerX - game.paddle.centerX) / (game.paddle.width / 2),
-    -0.95,
-    0.95,
-  );
-  ball.centerY = game.paddle.top - ball.radius - BALL_PADDLE_GAP;
-  ball.velocityX = speed * hitRatio * 0.82;
-  ball.velocityY = -Math.sqrt(
-    Math.max(0, speed * speed - ball.velocityX * ball.velocityX),
-  );
-  playSound(game, 'paddle');
-}
-
-/** 处理球和砖块、拦截物的碰撞 */
-export function handleBrickCollisions(game: GameState, ball: Ball, time: number) {
-  if (
-    ball.centerY + ball.radius < BRICK_HIT_TEST_TOP ||
-    ball.centerY - ball.radius > game.paddle.top
-  ) {
-    return;
-  }
-
-  const piercing = time < game.pierceUntil;
-  if (piercing) {
-    ball.piercingBrickIds ??= [];
-    clearExitedPiercingBricks(game, ball);
-  }
-
-  for (let brickIndex = game.bricks.length - 1; brickIndex >= 0; brickIndex -= 1) {
-    const brick = game.bricks[brickIndex];
-    if (!circleIntersectsBrick(ball, brick)) {
-      continue;
-    }
-
-    if (brick.obstacle) {
-      reflectBallFromBrick(ball, brick);
-      playSound(game, 'wall');
+  private stepBall(b: Ball, dt: number): void {
+    if (b.stuck) {
+      const half = this.paddle.w / 2 - BALL_R;
+      b.stuckOffset = clamp(b.stuckOffset, -half, half);
+      b.x = this.paddle.x + b.stuckOffset;
+      b.y = SERVE_Y;
+      b.stuckTime -= dt;
+      if (b.stuckTime <= 0) this.release(b);
       return;
     }
-
-    if (piercing && ball.piercingBrickIds.includes(brick.id)) {
-      continue;
+    if (b.portalCd > 0) b.portalCd -= dt;
+    b.boost = 1 + (b.boost - 1) * Math.exp(-dt * 2.2);
+    b.idle += dt;
+    if (b.idle > 10) {
+      // 长时间只在拦截物之间弹跳：随机扰动方向，避免死循环
+      const a =
+        Math.atan2(b.dy, b.dx) +
+        (this.rng.chance(0.5) ? 1 : -1) * this.rng.range(0.15, 0.3);
+      b.dx = Math.cos(a);
+      b.dy = Math.sin(a);
+      this.fixDir(b);
+      b.idle = 0;
     }
-
-    brick.hp -= piercing ? PIERCE_DAMAGE : 1;
-    if (piercing) {
-      ball.piercingBrickIds.push(brick.id);
+    if (this.phase === 'clear') {
+      // 通关后球逐渐下坠离场
+      b.dy += dt * 1.2;
+      const l = Math.hypot(b.dx, b.dy);
+      b.dx /= l;
+      b.dy /= l;
     }
-    if (brick.hp <= 0) {
-      game.bricks.splice(brickIndex, 1);
-      game.score += 20 * brick.maxHp + game.level * 3;
-      game.bestScore = Math.max(game.bestScore, game.score);
-      spawnBreakEffects(game, brick);
-      maybeDropPowerup(game, brick);
-      playSound(game, 'break');
+    this.depenetrate(b);
+    let remaining = this.speedOf(b) * dt;
+    const withPaddle = this.phase === 'play';
+    for (let iter = 0; iter < 8 && remaining > 1e-6 && !b.stuck; iter++) {
+      const h = this.cast(b.x, b.y, b.dx, b.dy, remaining, withPaddle);
+      if (!h) {
+        b.x += b.dx * remaining;
+        b.y += b.dy * remaining;
+        break;
+      }
+      const adv = Math.max(0, h.t - 0.02);
+      b.x += b.dx * adv;
+      b.y += b.dy * adv;
+      remaining -= Math.max(h.t, 0.01);
+      this.resolve(b, h);
+    }
+    this.checkPortal(b);
+    if (b.y - BALL_R > H + 4) b.lost = true;
+  }
+
+  /** 从 (x,y) 沿 (dx,dy) 扫掠小球，返回最早的碰撞 */
+  private cast(
+    x: number,
+    y: number,
+    dx: number,
+    dy: number,
+    maxT: number,
+    withPaddle: boolean,
+  ): CastHit | null {
+    let best: CastHit | null = null;
+    let bestT = maxT;
+    const R = BALL_R;
+    if (dx < 0) {
+      const t = Math.max(0, (x - R) / -dx);
+      if (t <= bestT) {
+        bestT = t;
+        best = { t, nx: 1, ny: 0, kind: 'wall', body: null };
+      }
+    } else if (dx > 0) {
+      const t = Math.max(0, (W - R - x) / dx);
+      if (t <= bestT) {
+        bestT = t;
+        best = { t, nx: -1, ny: 0, kind: 'wall', body: null };
+      }
+    }
+    if (dy < 0) {
+      const t = Math.max(0, (y - R) / -dy);
+      if (t <= bestT) {
+        bestT = t;
+        best = { t, nx: 0, ny: 1, kind: 'wall', body: null };
+      }
+    }
+    if (
+      dy > 0 &&
+      this.effects.shield > 0 &&
+      this.phase === 'play' &&
+      y <= SHIELD_Y - R + 1
+    ) {
+      const t = Math.max(0, (SHIELD_Y - R - y) / dy);
+      if (t <= bestT) {
+        bestT = t;
+        best = { t, nx: 0, ny: -1, kind: 'shield', body: null };
+      }
+    }
+    if (withPaddle) {
+      const h = sweepCircle(x, y, dx, dy, bestT, R, this.paddleShape());
+      if (h && h.t <= bestT) {
+        bestT = h.t;
+        best = { ...h, kind: 'paddle', body: null };
+      }
+    }
+    const minX = Math.min(x, x + dx * bestT) - R;
+    const maxX = Math.max(x, x + dx * bestT) + R;
+    const minY = Math.min(y, y + dy * bestT) - R;
+    const maxY = Math.max(y, y + dy * bestT) + R;
+    for (const body of this.bodies) {
+      if (!body.alive || body.kind === 'portal') continue;
+      const bb = body.aabb;
+      if (bb.maxX < minX || bb.minX > maxX || bb.maxY < minY || bb.minY > maxY) continue;
+      const h = sweepCircle(x, y, dx, dy, bestT, R, body.shape);
+      if (h && h.t < bestT) {
+        bestT = h.t;
+        best = { ...h, kind: 'body', body };
+      }
+    }
+    return best;
+  }
+
+  private resolve(b: Ball, h: CastHit): void {
+    switch (h.kind) {
+      case 'wall':
+        this.bounce(b, h.nx, h.ny);
+        this.emit({ type: 'wall', x: b.x, y: b.y });
+        break;
+      case 'shield':
+        this.bounce(b, 0, -1);
+        this.emit({ type: 'shield', x: b.x, y: SHIELD_Y });
+        break;
+      case 'paddle':
+        this.hitPaddle(b, h.nx, h.ny);
+        break;
+      case 'body':
+        this.hitBody(b, h.body!, h.nx, h.ny);
+        break;
+    }
+  }
+
+  private bounce(b: Ball, nx: number, ny: number): void {
+    const r = reflect(b.dx, b.dy, nx, ny);
+    b.dx = r.x;
+    b.dy = r.y;
+    this.fixDir(b);
+  }
+
+  /** 归一化并保证最小竖直分量 */
+  private fixDir(b: Ball): void {
+    const l = Math.hypot(b.dx, b.dy) || 1;
+    b.dx /= l;
+    b.dy /= l;
+    if (Math.abs(b.dy) < MIN_VERTICAL) {
+      const sy = b.dy > 0 ? 1 : -1;
+      b.dy = sy * MIN_VERTICAL;
+      b.dx = (b.dx < 0 ? -1 : 1) * Math.sqrt(1 - MIN_VERTICAL * MIN_VERTICAL);
+    }
+  }
+
+  private hitPaddle(b: Ball, nx: number, ny: number): void {
+    const p = this.paddle;
+    if (ny < -0.25 && b.dy > 0) {
+      // 经典打砖块手感：落点越靠边，反弹越斜
+      const off = clamp((b.x - p.x) / (p.w / 2), -1, 1);
+      const a = off * MAX_BOUNCE;
+      b.dx = Math.sin(a);
+      b.dy = -Math.cos(a);
+      b.idle = 0;
+      if (this.effects.magnet > 0) {
+        b.stuck = true;
+        b.stuckOffset = b.x - p.x;
+        b.stuckTime = 2.5;
+      }
+      this.combo = 0;
     } else {
-      spawnHitParticles(game, brick);
-      playSound(game, 'brick');
+      this.bounce(b, nx, ny);
     }
-
-    if (!piercing) {
-      reflectBallFromBrick(ball, brick);
-      return;
-    }
-  }
-}
-
-/** 穿透球离开砖块后清掉接触记录，下次重新穿过才会再次结算伤害 */
-export function clearExitedPiercingBricks(game: GameState, ball: Ball) {
-  if (ball.piercingBrickIds.length === 0) {
-    return;
+    p.flash = 0.15;
+    this.emit({ type: 'paddle', x: b.x, y: b.y });
   }
 
-  ball.piercingBrickIds = ball.piercingBrickIds.filter((brickId) => {
-    const brick = game.bricks.find((candidate) => candidate.id === brickId);
-    return brick ? circleIntersectsBrick(ball, brick) : false;
-  });
-}
-
-/** 更新掉落道具位置并处理挡板拾取 */
-export function updatePowerups(game: GameState, elapsedSeconds: number, time: number) {
-  for (
-    let powerupIndex = game.powerups.length - 1;
-    powerupIndex >= 0;
-    powerupIndex -= 1
-  ) {
-    const powerup = game.powerups[powerupIndex];
-    powerup.centerY += powerup.velocityY * elapsedSeconds;
-
-    if (circleIntersectsRect(powerupToBall(powerup), getPaddleRect(game.paddle))) {
-      applyPowerup(game, powerup.type, time);
-      game.powerups.splice(powerupIndex, 1);
-      playSound(game, 'power');
-    } else if (powerup.centerY - powerup.size > game.worldHeight) {
-      game.powerups.splice(powerupIndex, 1);
-    }
-  }
-}
-
-/** 检查是否清空所有可破坏砖块，并进入通关展示状态 */
-export function checkLevelClear(game: GameState, time = performance.now()) {
-  if (game.status !== 'playing' || game.bricks.some((brick) => !brick.obstacle)) {
-    return;
-  }
-
-  game.status = 'levelClear';
-  game.keyboardDirection = 0;
-  game.levelClearAt = time;
-  game.highestUnlocked = Math.max(game.highestUnlocked, game.level + 1);
-  game.bestScore = Math.max(game.bestScore, game.score);
-  persistStoredState(game);
-  playSound(game, 'win');
-}
-
-/** 道具只在接住时生效，双球和发散五球都作用于当前所有球 */
-export function applyPowerup(game: GameState, type: PowerType, time: number) {
-  if (type === 'wide') {
-    game.wideLevel = Math.min(PADDLE_MAX_WIDE_LEVEL, game.wideLevel + 1);
-    game.wideUntil = time + WIDE_DURATION_MS;
-  } else if (type === 'slow') {
-    game.slowUntil = Math.max(game.slowUntil, time + SLOW_DURATION_MS);
-  } else if (type === 'pierce') {
-    game.pierceUntil = Math.max(game.pierceUntil, time + PIERCE_DURATION_MS);
-  } else if (type === 'multi') {
-    spawnFanBalls(game, game.balls.slice(), 1);
-  } else if (type === 'burst') {
-    spawnFanBalls(game, game.balls.slice(), 5);
-  }
-}
-
-/** 从每个源球周围生成新球，达到球数上限后静默停止 */
-export function spawnFanBalls(
-  game: GameState,
-  sourceBalls: Ball[],
-  countPerBall: number,
-) {
-  const speed = getBallSpeed(game, performance.now());
-
-  for (const sourceBall of sourceBalls) {
-    for (let countIndex = 0; countIndex < countPerBall; countIndex += 1) {
-      if (game.balls.length >= game.config.maxBalls) {
-        applyBallSurgeBrickHp(game);
+  private hitBody(b: Ball, body: Body, nx: number, ny: number): void {
+    if (body.kind === 'brick') {
+      b.idle = 0;
+      const pierce = this.effects.pierce > 0;
+      if (pierce && body.brick !== 'core') {
+        this.destroyBrick(body);
         return;
       }
-
-      const sourceAngle = Math.atan2(sourceBall.velocityY, sourceBall.velocityX);
-      const angle =
-        countPerBall === 1
-          ? sourceAngle + (sourceBall.velocityX >= 0 ? -0.55 : 0.55)
-          : (Math.PI * 2 * countIndex) / countPerBall + Math.random() * 0.35;
-      game.balls.push({
-        id: nextId(game),
-        centerX: sourceBall.centerX,
-        centerY: sourceBall.centerY,
-        radius: sourceBall.radius,
-        velocityX: Math.cos(angle) * speed,
-        velocityY: Math.sin(angle) * speed,
-        piercingBrickIds: [],
-      });
+      this.bounce(b, nx, ny);
+      this.damageBrick(body, pierce ? 3 : 1);
+    } else if (body.kind === 'bumper') {
+      this.bounce(b, nx, ny);
+      b.boost = 1.55;
+      body.flash = 0.3;
+      body.pulse = 1;
+      this.addScore(25);
+      this.emit({ type: 'bumper', x: body.x, y: body.y });
+    } else {
+      this.bounce(b, nx, ny);
+      body.flash = 0.12;
+      this.emit({ type: 'blocker', x: b.x - nx * BALL_R, y: b.y - ny * BALL_R });
     }
   }
 
-  applyBallSurgeBrickHp(game);
-}
-
-/** 球数首次超过阈值时，按当前配置把本关剩余可破坏砖块提升到高命中次数 */
-function applyBallSurgeBrickHp(game: GameState) {
-  if (
-    game.ballSurgeApplied ||
-    game.config.brickSurgeMode === 'off' ||
-    game.balls.length <= BALL_SURGE_THRESHOLD
-  ) {
-    return;
+  /** 被移动的机关挤进球里时，把球推出来 */
+  private depenetrate(b: Ball): void {
+    for (const body of this.bodies) {
+      if (!body.alive || body.kind === 'portal') continue;
+      const bb = body.aabb;
+      if (
+        b.x + BALL_R < bb.minX ||
+        b.x - BALL_R > bb.maxX ||
+        b.y + BALL_R < bb.minY ||
+        b.y - BALL_R > bb.maxY
+      )
+        continue;
+      const o = circleOverlap(b.x, b.y, BALL_R, body.shape);
+      if (!o) continue;
+      if (body.kind === 'brick' && this.effects.pierce > 0 && body.brick !== 'core') {
+        this.destroyBrick(body);
+        continue;
+      }
+      b.x += o.nx * (o.depth + 0.05);
+      b.y += o.ny * (o.depth + 0.05);
+      if (b.dx * o.nx + b.dy * o.ny < 0) this.hitBody(b, body, o.nx, o.ny);
+    }
+    if (this.phase === 'play') {
+      const o = circleOverlap(b.x, b.y, BALL_R, this.paddleShape());
+      if (o) {
+        b.x += o.nx * (o.depth + 0.05);
+        b.y += o.ny * (o.depth + 0.05);
+        if (b.dx * o.nx + b.dy * o.ny < 0) this.hitPaddle(b, o.nx, o.ny);
+      }
+    }
+    b.x = clamp(b.x, BALL_R, W - BALL_R);
+    if (b.y < BALL_R) b.y = BALL_R;
   }
 
-  const surgeHp =
-    game.config.brickSurgeMode === 'super' ? BALL_SURGE_SUPER_HP : BALL_SURGE_NORMAL_HP;
-  game.ballSurgeApplied = true;
-  game.paddle.width = getConfiguredPaddleWidth(game);
-  movePaddleTo(game, game.paddle.centerX);
-  for (const brick of game.bricks) {
-    if (!brick.obstacle) {
-      brick.hp = surgeHp;
-      brick.maxHp = surgeHp;
+  private checkPortal(b: Ball): void {
+    if (b.portalCd > 0) return;
+    for (const [p, other] of this.partner) {
+      const r = p.shape.kind === 'circle' ? p.shape.r : 20;
+      if ((b.x - p.x) ** 2 + (b.y - p.y) ** 2 < r * r) {
+        const fx = b.x;
+        const fy = b.y;
+        b.x = other.x + b.dx * 2;
+        b.y = other.y + b.dy * 2;
+        b.portalCd = 0.45;
+        p.flash = other.flash = 0.3;
+        this.emit({ type: 'portal', x: fx, y: fy, x2: b.x, y2: b.y });
+        return;
+      }
     }
   }
-}
 
-/** 先判断是否掉落，再按权重抽取道具类型 */
-export function maybeDropPowerup(game: GameState, brick: Brick) {
-  const dropChance = Math.min(0.18 + game.level * 0.004, 0.28);
-  if (Math.random() > dropChance) {
-    return;
+  private release(b: Ball): void {
+    const off = clamp(b.stuckOffset / (this.paddle.w / 2), -1, 1);
+    const a = off * MAX_BOUNCE * 0.8;
+    b.dx = Math.sin(a);
+    b.dy = -Math.cos(a);
+    b.stuck = false;
+    this.emit({ type: 'launch', x: b.x, y: b.y });
   }
 
-  const totalWeight = Object.values(POWERUPS).reduce(
-    (total, powerup) => total + powerup.weight,
-    0,
-  );
-  let roll = Math.random() * totalWeight;
-
-  for (const [type, powerup] of Object.entries(POWERUPS) as [
-    PowerType,
-    (typeof POWERUPS)[PowerType],
-  ][]) {
-    roll -= powerup.weight;
-    if (roll <= 0) {
-      game.powerups.push({
-        id: nextId(game),
-        centerX: brick.left + brick.width / 2,
-        centerY: brick.top + brick.height / 2,
-        size: 16,
-        velocityY: 120,
-        type,
-      });
-      return;
-    }
+  damageBrick(body: Body, amount: number): void {
+    if (this.phase === 'clear' || this.phase === 'lost') return;
+    if (!body.alive || body.kind !== 'brick') return;
+    const color = brickColor(body.brick, body.hp);
+    body.hp -= amount;
+    body.flash = 0.1;
+    body.pulse = 1;
+    this.addScore(10);
+    if (body.hp <= 0) this.destroyBrick(body, color);
+    else this.emit({ type: 'brickHit', x: body.x, y: body.y, color, combo: this.combo });
   }
-}
 
-/** 生成砖块破碎时的屏幕震动和粒子 */
-export function spawnBreakEffects(game: GameState, brick: Brick) {
-  game.shake = Math.max(game.shake, 5);
-  spawnParticles(game, brick, 13, getBrickColor(brick));
-}
-
-/** 生成砖块受击但未破碎时的少量粒子 */
-export function spawnHitParticles(game: GameState, brick: Brick) {
-  spawnParticles(game, brick, 5, getBrickColor(brick));
-}
-
-/** 在砖块中心生成粒子并控制总量上限 */
-export function spawnParticles(
-  game: GameState,
-  brick: Brick,
-  count: number,
-  color: string,
-) {
-  const mobileLayout = game.worldHeight > WORLD_HEIGHT;
-  const maxParticles = mobileLayout ? MOBILE_MAX_PARTICLES : MAX_PARTICLES;
-  const spawnCount = mobileLayout ? Math.ceil(count * 0.55) : count;
-
-  for (let countIndex = 0; countIndex < spawnCount; countIndex += 1) {
-    if (game.particles.length >= maxParticles) {
-      return;
-    }
-
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 70 + Math.random() * 180;
-    game.particles.push({
-      id: nextId(game),
-      centerX: brick.left + brick.width / 2,
-      centerY: brick.top + brick.height / 2,
-      velocityX: Math.cos(angle) * speed,
-      velocityY: Math.sin(angle) * speed,
-      size: 2 + Math.random() * 4,
-      ttl: 0.35 + Math.random() * 0.45,
+  private destroyBrick(body: Body, color = brickColor(body.brick, body.hp)): void {
+    if (this.phase === 'clear' || this.phase === 'lost') return;
+    if (!body.alive) return;
+    body.alive = false;
+    body.hp = 0;
+    this.bricksLeft--;
+    this.combo++;
+    this.maxCombo = Math.max(this.maxCombo, this.combo);
+    const base = body.brick === 'core' ? 2500 : 40 + 10 * body.maxHp;
+    const points = Math.round(base * (1 + 0.1 * Math.min(this.combo - 1, 30)));
+    this.addScore(points);
+    const bb = body.aabb;
+    this.emit({
+      type: 'brickBreak',
+      x: body.x,
+      y: body.y,
+      w: bb.maxX - bb.minX,
+      h: bb.maxY - bb.minY,
       color,
+      combo: this.combo,
+      points,
+      brick: body.brick,
     });
+    if (this.combo >= 5 && this.combo % 5 === 0)
+      this.emit({ type: 'combo', combo: this.combo });
+    if (
+      body.brick === 'gold' ||
+      (body.brick === 'normal' && this.rng.next() < this.level.drop)
+    )
+      this.dropItem(body.x, body.y);
+    if (body.brick === 'bomb')
+      this.explosions.push({ x: body.x, y: body.y, delay: 0.09, big: false });
+    if (body.brick === 'core')
+      this.explosions.push({ x: body.x, y: body.y, delay: 0.05, big: true });
+    if (this.bricksLeft === 0) this.onClear();
   }
-}
 
-/** 更新粒子位置并移除过期粒子 */
-export function updateParticles(game: GameState, elapsedSeconds: number) {
-  for (
-    let particleIndex = game.particles.length - 1;
-    particleIndex >= 0;
-    particleIndex -= 1
-  ) {
-    const particle = game.particles[particleIndex];
-    particle.ttl -= elapsedSeconds;
-    particle.centerX += particle.velocityX * elapsedSeconds;
-    particle.centerY += particle.velocityY * elapsedSeconds;
-    particle.velocityY += 260 * elapsedSeconds;
-    if (particle.ttl <= 0) {
-      game.particles.splice(particleIndex, 1);
+  private updateExplosions(dt: number): void {
+    if (!this.explosions.length) return;
+    const list = this.explosions;
+    this.explosions = [];
+    for (const e of list) {
+      e.delay -= dt;
+      if (e.delay > 0) {
+        this.explosions.push(e);
+        continue;
+      }
+      this.emit({ type: 'explode', x: e.x, y: e.y, big: e.big });
+      // 菱形范围（格子单位）：普通炸弹覆盖周围 13 格
+      const reach = e.big ? 3.2 : 2.2;
+      const dmg = e.big ? 4 : 3;
+      for (const b of this.bodies) {
+        if (!b.alive || b.kind !== 'brick') continue;
+        const dc = Math.abs(b.x - e.x) / CELL_W;
+        const dr = Math.abs(b.y - e.y) / CELL_H;
+        if (dc + dr <= reach) this.damageBrick(b, dmg);
+      }
     }
   }
-}
 
-/** 根据砖块类型和剩余血量返回颜色 */
-export function getBrickColor(brick: Brick) {
-  if (brick.obstacle) {
-    return '#7d8799';
+  private dropItem(x: number, y: number): void {
+    const pool = POWER_ORDER.filter((t) => this.level.traps || POWERS[t].good);
+    const total = pool.reduce((s, t) => s + POWERS[t].weight, 0);
+    let r = this.rng.next() * total;
+    let type = pool[0];
+    for (const t of pool) {
+      r -= POWERS[t].weight;
+      if (r <= 0) {
+        type = t;
+        break;
+      }
+    }
+    this.items.push({ type, x, y, vy: 110 + this.rng.next() * 40, age: 0, dead: false });
   }
 
-  const hpColors = [
-    '#21f3a3',
-    '#43f5ff',
-    '#ffd166',
-    '#ff9f1c',
-    '#ff5a7a',
-    '#f472b6',
-    '#c084fc',
-    '#a78bfa',
-    '#818cf8',
-    '#60a5fa',
-    '#38bdf8',
-    '#22d3ee',
-  ];
-  return hpColors[clamp(brick.hp, 1, MAX_BRICK_HP) - 1];
-}
-
-/** 计算当前小球目标速度 */
-export function getBallSpeed(game: GameState, time: number) {
-  const baseSpeed = Math.min(
-    BALL_BASE_SPEED + game.elapsedSeconds * BALL_SPEED_GROWTH_PER_SECOND,
-    BALL_MAX_SPEED,
-  );
-  return time < game.slowUntil ? baseSpeed * 0.72 : baseSpeed;
-}
-
-/** 归一化小球速度，并避免小球长期接近水平运动 */
-export function normalizeBallSpeed(ball: Ball, speed: number, maxDelta = Infinity) {
-  const currentSpeed = Math.hypot(ball.velocityX, ball.velocityY) || 1;
-  const delta = speed - currentSpeed;
-  const maxChange = delta > 0 ? maxDelta : maxDelta * 3;
-  const nextSpeed = currentSpeed + clamp(delta, -maxChange, maxChange);
-  ball.velocityX = (ball.velocityX / currentSpeed) * nextSpeed;
-  ball.velocityY = (ball.velocityY / currentSpeed) * nextSpeed;
-
-  if (Math.abs(ball.velocityY) < nextSpeed * 0.22) {
-    ball.velocityY = Math.sign(ball.velocityY || -1) * nextSpeed * 0.22;
-    ball.velocityX =
-      Math.sign(ball.velocityX || 1) *
-      Math.sqrt(nextSpeed * nextSpeed - ball.velocityY * ball.velocityY);
-  }
-}
-
-/** 挡板反弹时限制单次提速，避免减速道具结束后突然弹快 */
-export function getCollisionBallSpeed(ball: Ball, targetSpeed: number) {
-  const currentSpeed = Math.hypot(ball.velocityX, ball.velocityY) || targetSpeed;
-  return targetSpeed > currentSpeed
-    ? Math.min(targetSpeed, currentSpeed + 35)
-    : targetSpeed;
-}
-
-/** 生成 React UI 需要的低频快照 */
-export function toSnapshot(game: GameState): Snapshot {
-  const time = performance.now();
-  const activePowers: string[] = [];
-  if (game.wideLevel > 0) {
-    activePowers.push(`${getPowerupLabel('wide')} Lv.${game.wideLevel}`);
-  }
-  if (time < game.slowUntil) {
-    activePowers.push(getPowerupLabel('slow'));
-  }
-  if (time < game.pierceUntil) {
-    activePowers.push(getPowerupLabel('pierce'));
+  private updateItems(dt: number): void {
+    if (!this.items.length) return;
+    const p = this.paddle;
+    const canCatch = this.phase === 'play';
+    for (const it of this.items) {
+      it.age += dt;
+      it.vy = Math.min(it.vy + 50 * dt, 300);
+      it.y += it.vy * dt;
+      if (
+        canCatch &&
+        Math.abs(it.x - p.x) < p.w / 2 + ITEM_W / 2 - 4 &&
+        Math.abs(it.y - PADDLE_Y) < (PADDLE_H + ITEM_H) / 2
+      ) {
+        it.dead = true;
+        this.applyPower(it.type, it.x, it.y);
+      }
+      if (it.y > H + 30) it.dead = true;
+    }
+    this.items = this.items.filter((it) => !it.dead);
   }
 
-  return {
-    level: game.level,
-    score: game.score,
-    lives: game.lives,
-    status: game.status,
-    bestScore: game.bestScore,
-    highestUnlocked: game.highestUnlocked,
-    muted: game.muted,
-    config: { ...game.config },
-    ballCount: game.balls.length,
-    activePowers,
-  };
-}
+  applyPower(type: PowerType, x = this.paddle.x, y = PADDLE_Y): void {
+    if (this.phase === 'clear' || this.phase === 'lost') return;
+    const e = this.effects;
+    switch (type) {
+      case 'wide':
+        e.wide = POWERS.wide.duration;
+        e.shrink = 0;
+        break;
+      case 'shrink':
+        e.shrink = POWERS.shrink.duration;
+        e.wide = 0;
+        break;
+      case 'slow':
+        e.slow = POWERS.slow.duration;
+        e.fast = 0;
+        break;
+      case 'fast':
+        e.fast = POWERS.fast.duration;
+        e.slow = 0;
+        break;
+      case 'pierce':
+      case 'laser':
+      case 'magnet':
+      case 'shield':
+        e[type] = POWERS[type].duration;
+        break;
+      case 'life':
+        this.lives = Math.min(MAX_LIVES, this.lives + 1);
+        break;
+      case 'multi':
+        this.splitBalls(2);
+        break;
+      case 'spread':
+        this.splitBalls(5);
+        break;
+    }
+    if (POWERS[type].good) this.addScore(100);
+    this.emit({ type: 'power', power: type, x, y });
+  }
 
-/** 根据当前状态返回主操作按钮文案 */
-export function getPrimaryActionLabel(status: GameState['status']) {
-  return getActionLabel(status);
+  private splitBalls(factor: 2 | 5): void {
+    const halfAngle = factor === 2 ? 0.2 : (32 * Math.PI) / 180;
+    for (const b of [...this.balls]) {
+      const count = Math.min(factor, MAX_BALLS - this.balls.length + 1);
+      if (count < 2) break;
+      if (b.lost) continue;
+      const angle = Math.atan2(b.dy, b.dx);
+      for (let i = 0; i < count; i++) {
+        // 保留磁力源球的待发射状态，只有新球立即飞出
+        const nb =
+          i === Math.floor(count / 2)
+            ? b
+            : {
+                ...b,
+                id: this.ballId++,
+                stuck: false,
+                stuckOffset: 0,
+                stuckTime: 0,
+              };
+        const a = angle + halfAngle * ((2 * i) / (count - 1) - 1);
+        nb.dx = Math.cos(a);
+        nb.dy = Math.sin(a);
+        this.fixDir(nb);
+        if (nb !== b) this.balls.push(nb);
+      }
+    }
+  }
+
+  private updateLasers(dt: number): void {
+    if (this.phase === 'play' && this.effects.laser > 0) {
+      this.laserCd -= dt;
+      if (this.laserCd <= 0) {
+        this.laserCd = 0.3;
+        const off = this.paddle.w / 2 - 10;
+        for (const s of [-1, 1])
+          this.lasers.push({ x: this.paddle.x + s * off, y: PADDLE_Y - 12, dead: false });
+        this.emit({ type: 'laser', x: this.paddle.x, y: PADDLE_Y - 12 });
+      }
+    }
+    if (!this.lasers.length) return;
+    const dist = LASER_SPEED * dt;
+    for (const l of this.lasers) {
+      let bestT = dist;
+      let target: Body | null = null;
+      for (const b of this.bodies) {
+        if (!b.alive || b.kind === 'portal') continue;
+        const bb = b.aabb;
+        if (l.x < bb.minX || l.x > bb.maxX || bb.minY > l.y || bb.maxY < l.y - dist)
+          continue;
+        const h = sweepCircle(l.x, l.y, 0, -1, bestT, 0, b.shape);
+        if (h && h.t < bestT) {
+          bestT = h.t;
+          target = b;
+        }
+      }
+      if (target) {
+        l.dead = true;
+        if (target.kind === 'brick') this.damageBrick(target, 1);
+        else this.emit({ type: 'blocker', x: l.x, y: l.y - bestT });
+      } else {
+        l.y -= dist;
+        if (l.y < -20) l.dead = true;
+      }
+    }
+    this.lasers = this.lasers.filter((l) => !l.dead);
+  }
+
+  private onClear(): void {
+    if (this.phase === 'clear' || this.phase === 'lost') return;
+    this.clearBonus = this.mode === 'demo' ? 0 : this.lives * 1000;
+    this.addScore(this.clearBonus);
+    for (const b of this.balls) {
+      if (b.stuck) {
+        b.stuck = false;
+        b.dx = 0;
+        b.dy = -1;
+      }
+    }
+    this.effects.shield = 0;
+    this.effects.magnet = 0;
+    this.effects.laser = 0;
+    this.setPhase('clear');
+    this.emit({ type: 'clear' });
+  }
+
+  private loseLife(): void {
+    this.combo = 0;
+    if (this.mode !== 'demo') {
+      this.lives--;
+      this.livesLost++;
+    }
+    this.emit({ type: 'lifeLost', lives: this.lives });
+    this.items = [];
+    this.lasers = [];
+    for (const k of TIMED) this.effects[k] = 0;
+    if (this.lives <= 0) {
+      this.setPhase('lost');
+      this.emit({ type: 'gameOver' });
+      return;
+    }
+    this.serve();
+  }
 }

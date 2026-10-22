@@ -1,501 +1,396 @@
-import {
-  MAX_CANVAS_PIXELS,
-  MAX_RENDER_PIXEL_RATIO,
-  MOBILE_MAX_CANVAS_PIXELS,
-  MOBILE_RENDER_PIXEL_RATIO,
-  PADDLE_BASE_WIDTH,
-  PADDLE_MAX_WIDE_LEVEL,
-  PORTRAIT_WORLD_HEIGHT,
-  WORLD_HEIGHT,
-  WORLD_WIDTH,
-} from './constants';
-import type { Ball, Brick, GameState, Paddle, Powerup, RectLike } from './types';
-import { clamp } from './utils';
+// 几何与碰撞：所有碰撞都用「圆沿射线扫掠」做连续检测（CCD），高速小球不会穿透。
+// 约定：方向向量 (dx, dy) 必须是单位向量；返回的 t 是沿方向移动的距离。
 
-type Point = { x: number; y: number };
-
-/** 绘制圆角矩形路径，不直接填充或描边 */
-export function roundRect(
-  context: CanvasRenderingContext2D,
-  left: number,
-  top: number,
-  width: number,
-  height: number,
-  radius: number,
-) {
-  const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
-  context.beginPath();
-  context.moveTo(left + safeRadius, top);
-  context.arcTo(left + width, top, left + width, top + height, safeRadius);
-  context.arcTo(left + width, top + height, left, top + height, safeRadius);
-  context.arcTo(left, top + height, left, top, safeRadius);
-  context.arcTo(left, top, left + width, top, safeRadius);
-  context.closePath();
+export interface Vec {
+  x: number;
+  y: number;
 }
 
-/** 判断圆形是否和矩形相交 */
-export function circleIntersectsRect(
-  ball: Pick<Ball, 'centerX' | 'centerY' | 'radius'>,
-  rect: RectLike,
-) {
-  const nearestX = clamp(ball.centerX, rect.left, rect.left + rect.width);
-  const nearestY = clamp(ball.centerY, rect.top, rect.top + rect.height);
-  const distanceX = ball.centerX - nearestX;
-  const distanceY = ball.centerY - nearestY;
-  return distanceX * distanceX + distanceY * distanceY <= ball.radius * ball.radius;
+export interface AABB {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 }
 
-/** 判断圆形是否碰到砖块或单格异形拦截物 */
-export function circleIntersectsBrick(
-  ball: Pick<Ball, 'centerX' | 'centerY' | 'radius'>,
-  brick: Brick,
-) {
-  if (!brick.obstacle || brick.obstacleShape === 'block') {
-    return circleIntersectsRect(ball, brick);
-  }
+/** 凸多边形（世界坐标），normals[i] 是边 pts[i] → pts[i+1] 的外法线 */
+export interface PolyShape {
+  kind: 'poly';
+  pts: Vec[];
+  normals: Vec[];
+}
+export interface CircleShape {
+  kind: 'circle';
+  x: number;
+  y: number;
+  r: number;
+}
+/** 胶囊体：线段 a-b 外扩半径 r（挡板、旋转杆） */
+export interface CapsuleShape {
+  kind: 'capsule';
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  r: number;
+}
+export type Shape = PolyShape | CircleShape | CapsuleShape;
 
-  if (!circleIntersectsRect(ball, brick)) {
-    return false;
-  }
-  if (brick.obstacleShape === 'circle') {
-    const obstacleCircle = getObstacleCircle(brick);
-    const hitDistance = ball.radius + obstacleCircle.radius;
-    const distanceX = ball.centerX - obstacleCircle.centerX;
-    const distanceY = ball.centerY - obstacleCircle.centerY;
-    return distanceX * distanceX + distanceY * distanceY <= hitDistance * hitDistance;
-  }
-
-  return circleIntersectsPolygon(ball, getObstaclePolygonPoints(brick));
+export interface Hit {
+  t: number;
+  nx: number;
+  ny: number;
 }
 
-/** 单格圆形拦截物参数，渲染和碰撞共用 */
-export function getObstacleCircle(brick: Brick) {
-  return {
-    centerX: brick.left + brick.width / 2,
-    centerY: brick.top + brick.height / 2,
-    radius: Math.min(brick.width, brick.height) * 0.48,
-  };
+export interface Overlap {
+  depth: number;
+  nx: number;
+  ny: number;
 }
 
-/** 单格异形拦截物的外轮廓点，渲染和碰撞共用 */
-export function getObstaclePolygonPoints(brick: Brick) {
-  const left = brick.left;
-  const right = brick.left + brick.width;
-  const top = brick.top;
-  const bottom = brick.top + brick.height;
-  const centerX = brick.left + brick.width / 2;
-  const centerY = brick.top + brick.height / 2;
-  const skew = Math.min(brick.width * 0.22, brick.height * 0.55);
+/** 允许的最大「已嵌入」深度：在此深度内仍视为 t=0 的接触，避免浮点误差导致穿透 */
+const TOL = 0.75;
 
-  if (brick.obstacleShape === 'diamond') {
-    return [
-      { x: centerX, y: top + 1 },
-      { x: right - 1, y: centerY },
-      { x: centerX, y: bottom - 1 },
-      { x: left + 1, y: centerY },
-    ];
+export function polyNormals(pts: Vec[]): Vec[] {
+  const n = pts.length;
+  let cx = 0;
+  let cy = 0;
+  for (const p of pts) {
+    cx += p.x;
+    cy += p.y;
   }
-  if (brick.obstacleShape === 'slopeLeft') {
-    return [
-      { x: left + skew, y: top },
-      { x: right, y: top },
-      { x: right - skew, y: bottom },
-      { x: left, y: bottom },
-    ];
-  }
-  if (brick.obstacleShape === 'slopeRight') {
-    return [
-      { x: left, y: top },
-      { x: right - skew, y: top },
-      { x: right, y: bottom },
-      { x: left + skew, y: bottom },
-    ];
-  }
-  if (brick.obstacleShape === 'wedgeLeft') {
-    return [
-      { x: left, y: top },
-      { x: right, y: top },
-      { x: right, y: bottom },
-      { x: left + brick.width * 0.34, y: bottom },
-    ];
-  }
-  if (brick.obstacleShape === 'wedgeRight') {
-    return [
-      { x: left, y: top },
-      { x: right, y: top },
-      { x: right - brick.width * 0.34, y: bottom },
-      { x: left, y: bottom },
-    ];
-  }
+  cx /= n;
+  cy /= n;
+  return pts.map((a, i) => {
+    const b = pts[(i + 1) % n];
+    let nx = b.y - a.y;
+    let ny = a.x - b.x;
+    const len = Math.hypot(nx, ny) || 1;
+    nx /= len;
+    ny /= len;
+    // 凸多边形：外法线应背离质心
+    if (nx * ((a.x + b.x) / 2 - cx) + ny * ((a.y + b.y) / 2 - cy) < 0) {
+      nx = -nx;
+      ny = -ny;
+    }
+    return { x: nx, y: ny };
+  });
+}
 
+export function makePoly(pts: Vec[]): PolyShape {
+  return { kind: 'poly', pts, normals: polyNormals(pts) };
+}
+
+/** 以原点为中心的矩形顶点 */
+export function rectPts(w: number, h: number): Vec[] {
+  const hw = w / 2;
+  const hh = h / 2;
   return [
-    { x: left, y: top },
-    { x: right, y: top },
-    { x: right, y: bottom },
-    { x: left, y: bottom },
+    { x: -hw, y: -hh },
+    { x: hw, y: -hh },
+    { x: hw, y: hh },
+    { x: -hw, y: hh },
   ];
 }
 
-/** 判断圆形是否和凸多边形相交，避免采样漏判斜边或尖角 */
-function circleIntersectsPolygon(
-  ball: Pick<Ball, 'centerX' | 'centerY' | 'radius'>,
-  points: Point[],
-) {
-  if (pointInPolygon(ball.centerX, ball.centerY, points)) {
-    return true;
+/** 正多边形顶点，rot=0 时第一个顶点朝正上方 */
+export function regularPts(r: number, n: number, rot = 0): Vec[] {
+  const pts: Vec[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = rot - Math.PI / 2 + (i * Math.PI * 2) / n;
+    pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r });
   }
-
-  const radiusSquared = ball.radius * ball.radius;
-  for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
-    const start = points[pointIndex];
-    const end = points[(pointIndex + 1) % points.length];
-    const closest = getClosestPointOnSegment(
-      ball.centerX,
-      ball.centerY,
-      start.x,
-      start.y,
-      end.x,
-      end.y,
-    );
-    const distanceX = ball.centerX - closest.x;
-    const distanceY = ball.centerY - closest.y;
-    if (distanceX * distanceX + distanceY * distanceY <= radiusSquared) {
-      return true;
-    }
-  }
-
-  return false;
+  return pts;
 }
 
-/** 射线法判断点是否在多边形内 */
-function pointInPolygon(x: number, y: number, points: Point[]) {
-  let inside = false;
-  for (
-    let index = 0, previousIndex = points.length - 1;
-    index < points.length;
-    previousIndex = index, index += 1
-  ) {
-    const point = points[index];
-    const previousPoint = points[previousIndex];
-    const crossesRay = point.y > y !== previousPoint.y > y;
-    if (
-      crossesRay &&
-      x <
-        ((previousPoint.x - point.x) * (y - point.y)) / (previousPoint.y - point.y || 1) +
-          point.x
-    ) {
-      inside = !inside;
-    }
-  }
-  return inside;
+export function transformPts(local: Vec[], x: number, y: number, angle: number): Vec[] {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return local.map((p) => ({ x: x + p.x * c - p.y * s, y: y + p.x * s + p.y * c }));
 }
 
-/** 将挡板中心点结构转换成矩形结构 */
-export function getPaddleRect(paddle: Paddle): RectLike {
-  return {
-    left: paddle.centerX - paddle.width / 2,
-    top: paddle.top,
-    width: paddle.width,
-    height: paddle.height,
-  };
-}
-
-/** 将圆形道具转换为圆形碰撞结构 */
-export function powerupToBall(powerup: Powerup) {
-  return {
-    centerX: powerup.centerX,
-    centerY: powerup.centerY,
-    radius: powerup.size,
-  };
-}
-
-/** 移动挡板并限制在游戏世界内 */
-export function movePaddleTo(game: GameState, centerX: number) {
-  game.paddle.centerX = clamp(
-    centerX,
-    game.paddle.width / 2 + 8,
-    game.worldWidth - game.paddle.width / 2 - 8,
-  );
-}
-
-/** 将加宽等级线性映射为挡板宽度，5 级正好是当前游戏视口一半 */
-export function getPaddleWidth(wideLevel: number, worldWidth: number) {
-  const safeWideLevel = clamp(wideLevel, 0, PADDLE_MAX_WIDE_LEVEL);
-  return (
-    PADDLE_BASE_WIDTH +
-    ((worldWidth / 2 - PADDLE_BASE_WIDTH) * safeWideLevel) / PADDLE_MAX_WIDE_LEVEL
-  );
-}
-
-/** 计算 Canvas CSS 尺寸到游戏世界坐标的缩放比例 */
-export function getCanvasWorldScale(canvas: HTMLCanvasElement) {
-  const rect = canvas.getBoundingClientRect();
-  return getWorldViewport(rect.width, rect.height).scaleX || 1;
-}
-
-/** 将浏览器客户区坐标转换为游戏世界坐标 */
-export function getCanvasWorldPoint(
-  canvas: HTMLCanvasElement,
-  clientX: number,
-  clientY: number,
-) {
-  const rect = canvas.getBoundingClientRect();
-  const { scaleX, scaleY, offsetX, offsetY } = getWorldViewport(rect.width, rect.height);
-  const safeScaleX = scaleX || 1;
-  const safeScaleY = scaleY || 1;
-  return {
-    x: (clientX - rect.left - offsetX) / safeScaleX,
-    y: (clientY - rect.top - offsetY) / safeScaleY,
-  };
-}
-
-/** 计算实际渲染像素比，兼顾清晰度和发热控制 */
-export function getRenderPixelRatio(rect: DOMRect) {
-  const mobileRender = isMobileRenderTarget(rect);
-  const maxRenderPixelRatio = mobileRender
-    ? MOBILE_RENDER_PIXEL_RATIO
-    : MAX_RENDER_PIXEL_RATIO;
-  const maxCanvasPixels = mobileRender ? MOBILE_MAX_CANVAS_PIXELS : MAX_CANVAS_PIXELS;
-  const rawPixelRatio = Math.min(window.devicePixelRatio || 1, maxRenderPixelRatio);
-  const maxPixelRatioByArea = Math.sqrt(
-    maxCanvasPixels / Math.max(1, rect.width * rect.height),
-  );
-  return Math.max(0.75, Math.min(rawPixelRatio, maxPixelRatioByArea));
-}
-
-/** 判断当前视口是否启用移动端轻量绘制模式 */
-export function isMobileRenderTarget(rect: Pick<DOMRect, 'width' | 'height'>) {
-  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches ?? false;
-  return coarsePointer || rect.width < 760 || rect.height > rect.width;
-}
-
-type RectSide = 'left' | 'right' | 'top' | 'bottom';
-
-/** 按运动方向和最小重叠方向反弹小球 */
-export function reflectBallFromRect(ball: Ball, rect: RectLike) {
-  const overlapLeft = ball.centerX + ball.radius - rect.left;
-  const overlapRight = rect.left + rect.width - (ball.centerX - ball.radius);
-  const overlapTop = ball.centerY + ball.radius - rect.top;
-  const overlapBottom = rect.top + rect.height - (ball.centerY - ball.radius);
-  let selectedSide: RectSide = 'left';
-  let selectedOverlap = Infinity;
-  let hasApproachSide = false;
-
-  const considerApproach = (side: RectSide, overlap: number) => {
-    if (overlap <= 0) {
-      return;
-    }
-    if (!hasApproachSide || overlap < selectedOverlap) {
-      selectedSide = side;
-      selectedOverlap = overlap;
-      hasApproachSide = true;
-    }
-  };
-
-  if (ball.velocityX > 0) considerApproach('left', overlapLeft);
-  if (ball.velocityX < 0) considerApproach('right', overlapRight);
-  if (ball.velocityY > 0) considerApproach('top', overlapTop);
-  if (ball.velocityY < 0) considerApproach('bottom', overlapBottom);
-
-  if (!hasApproachSide) {
-    selectedSide = 'left';
-    selectedOverlap = Infinity;
-    const considerPositive = (side: RectSide, overlap: number) => {
-      if (overlap > 0 && overlap < selectedOverlap) {
-        selectedSide = side;
-        selectedOverlap = overlap;
+export function shapeAABB(s: Shape): AABB {
+  switch (s.kind) {
+    case 'circle':
+      return { minX: s.x - s.r, minY: s.y - s.r, maxX: s.x + s.r, maxY: s.y + s.r };
+    case 'capsule':
+      return {
+        minX: Math.min(s.ax, s.bx) - s.r,
+        minY: Math.min(s.ay, s.by) - s.r,
+        maxX: Math.max(s.ax, s.bx) + s.r,
+        maxY: Math.max(s.ay, s.by) + s.r,
+      };
+    case 'poly': {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const p of s.pts) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
       }
-    };
-    considerPositive('left', overlapLeft);
-    considerPositive('right', overlapRight);
-    considerPositive('top', overlapTop);
-    considerPositive('bottom', overlapBottom);
-  }
-
-  if (selectedSide === 'left') {
-    ball.centerX = rect.left - ball.radius - 0.5;
-    ball.velocityX = -Math.abs(ball.velocityX);
-  } else if (selectedSide === 'right') {
-    ball.centerX = rect.left + rect.width + ball.radius + 0.5;
-    ball.velocityX = Math.abs(ball.velocityX);
-  } else if (selectedSide === 'top') {
-    ball.centerY = rect.top - ball.radius - 0.5;
-    ball.velocityY = -Math.abs(ball.velocityY);
-  } else {
-    ball.centerY = rect.top + rect.height + ball.radius + 0.5;
-    ball.velocityY = Math.abs(ball.velocityY);
-  }
-}
-
-/** 单格异形拦截物按最近边或圆心反弹，产生更丰富轨道 */
-export function reflectBallFromBrick(ball: Ball, brick: Brick) {
-  if (!brick.obstacle || brick.obstacleShape === 'block') {
-    reflectBallFromRect(ball, brick);
-    return;
-  }
-  if (brick.obstacleShape === 'circle') {
-    reflectBallFromCircleObstacle(ball, brick);
-    return;
-  }
-
-  const points = getObstaclePolygonPoints(brick);
-  const inside = pointInPolygon(ball.centerX, ball.centerY, points);
-  const clockwise = getPolygonSignedArea(points) > 0;
-  let nearestContact = {
-    point: points[0],
-    start: points[0],
-    end: points[1] ?? points[0],
-    distance: Infinity,
-  };
-  let nearestNormal = { x: 0, y: -1 };
-  let nearestDistance = Infinity;
-  for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
-    const start = points[pointIndex];
-    const end = points[(pointIndex + 1) % points.length];
-    const closest = getClosestPointOnSegment(
-      ball.centerX,
-      ball.centerY,
-      start.x,
-      start.y,
-      end.x,
-      end.y,
-    );
-    const distance = Math.hypot(ball.centerX - closest.x, ball.centerY - closest.y);
-    if (distance < nearestDistance) {
-      nearestContact = { point: closest, start, end, distance };
-      nearestDistance = distance;
+      return { minX, minY, maxX, maxY };
     }
   }
+}
 
-  if (inside) {
-    nearestNormal = getOutwardEdgeNormal(
-      nearestContact.start,
-      nearestContact.end,
-      clockwise,
-    );
-  } else if (nearestContact.distance > 0) {
-    nearestNormal = {
-      x: (ball.centerX - nearestContact.point.x) / nearestContact.distance,
-      y: (ball.centerY - nearestContact.point.y) / nearestContact.distance,
-    };
-  } else {
-    nearestNormal = getOutwardEdgeNormal(
-      nearestContact.start,
-      nearestContact.end,
-      clockwise,
-    );
+export function aabbOverlap(a: AABB, b: AABB): boolean {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
+
+/** 射线与圆（半径 R）的首次接触距离；起点已在圆内且向内运动（浅嵌入）时返回 0 */
+export function rayCircle(
+  px: number,
+  py: number,
+  dx: number,
+  dy: number,
+  cx: number,
+  cy: number,
+  R: number,
+): number | null {
+  const mx = px - cx;
+  const my = py - cy;
+  const b = mx * dx + my * dy;
+  const c = mx * mx + my * my - R * R;
+  if (c <= 0) {
+    if (b < 0 && Math.sqrt(mx * mx + my * my) > R - TOL) return 0;
+    return null;
   }
-
-  const pushDistance = inside
-    ? ball.radius + nearestDistance + 0.5
-    : Math.max(1.5, ball.radius - nearestDistance + 0.5);
-  reflectBallByNormal(ball, nearestNormal.x, nearestNormal.y, pushDistance);
+  if (b >= 0) return null;
+  const disc = b * b - c;
+  if (disc < 0) return null;
+  return -b - Math.sqrt(disc);
 }
 
-/** 圆形拦截物按圆心法线反弹 */
-function reflectBallFromCircleObstacle(ball: Ball, brick: Brick) {
-  const obstacleCircle = getObstacleCircle(brick);
-  let distanceX = ball.centerX - obstacleCircle.centerX;
-  let distanceY = ball.centerY - obstacleCircle.centerY;
-  let distance = Math.hypot(distanceX, distanceY);
-  if (distance === 0) {
-    const speed = Math.hypot(ball.velocityX, ball.velocityY) || 1;
-    distanceX = -ball.velocityX / speed;
-    distanceY = -ball.velocityY / speed;
-    distance = 1;
+/** 圆心沿射线运动，撞上「线段 a-b 沿法线 n 外扩 R」这条边的距离；没撞上返回 -1 */
+function faceHit(
+  px: number,
+  py: number,
+  dx: number,
+  dy: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  nx: number,
+  ny: number,
+  R: number,
+  maxT: number,
+): number {
+  const denom = dx * nx + dy * ny;
+  if (denom > -1e-9) return -1;
+  const s = (px - ax) * nx + (py - ay) * ny;
+  if (s < R - TOL) return -1;
+  let t = (s - R) / -denom;
+  if (t < 0) t = 0;
+  if (t > maxT) return -1;
+  const hx = px + dx * t;
+  const hy = py + dy * t;
+  const ex = bx - ax;
+  const ey = by - ay;
+  const u = ((hx - ax) * ex + (hy - ay) * ey) / (ex * ex + ey * ey);
+  if (u < 0 || u > 1) return -1;
+  return t;
+}
+
+/**
+ * 半径 r 的圆从 (px,py) 沿单位方向 (dx,dy) 移动最多 maxT，求与形状的首次接触。
+ * 原理：把形状按 r 做 Minkowski 外扩（边平移 + 顶点变圆角），再做射线求交。
+ */
+export function sweepCircle(
+  px: number,
+  py: number,
+  dx: number,
+  dy: number,
+  maxT: number,
+  r: number,
+  s: Shape,
+): Hit | null {
+  if (s.kind === 'circle') {
+    const t = rayCircle(px, py, dx, dy, s.x, s.y, s.r + r);
+    if (t === null || t > maxT) return null;
+    return normalHit(t, px + dx * t - s.x, py + dy * t - s.y);
   }
-  const pushDistance = Math.max(
-    1.5,
-    ball.radius + obstacleCircle.radius - distance + 0.5,
-  );
-  reflectBallByNormal(ball, distanceX / distance, distanceY / distance, pushDistance);
-}
-
-/** 用法线反射速度，并轻微推出避免连续碰撞 */
-function reflectBallByNormal(
-  ball: Ball,
-  normalX: number,
-  normalY: number,
-  pushDistance = 1.5,
-) {
-  const dot = ball.velocityX * normalX + ball.velocityY * normalY;
-  if (dot < 0) {
-    ball.velocityX -= 2 * dot * normalX;
-    ball.velocityY -= 2 * dot * normalY;
+  let best: Hit | null = null;
+  let bestT = maxT;
+  if (s.kind === 'capsule') {
+    const R = r + s.r;
+    const ex = s.bx - s.ax;
+    const ey = s.by - s.ay;
+    const len = Math.hypot(ex, ey) || 1;
+    const nx = -ey / len;
+    const ny = ex / len;
+    for (let sgn = 1; sgn >= -1; sgn -= 2) {
+      const t = faceHit(
+        px,
+        py,
+        dx,
+        dy,
+        s.ax,
+        s.ay,
+        s.bx,
+        s.by,
+        nx * sgn,
+        ny * sgn,
+        R,
+        bestT,
+      );
+      if (t >= 0) {
+        bestT = t;
+        best = { t, nx: nx * sgn, ny: ny * sgn };
+      }
+    }
+    for (let k = 0; k < 2; k++) {
+      const vx = k === 0 ? s.ax : s.bx;
+      const vy = k === 0 ? s.ay : s.by;
+      const t = rayCircle(px, py, dx, dy, vx, vy, R);
+      if (t !== null && t < bestT) {
+        bestT = t;
+        best = normalHit(t, px + dx * t - vx, py + dy * t - vy);
+      }
+    }
+    return best;
   }
-  ball.centerX += normalX * pushDistance;
-  ball.centerY += normalY * pushDistance;
-}
-
-/** 多边形有向面积，用于判断边的外侧方向 */
-function getPolygonSignedArea(points: Point[]) {
-  let area = 0;
-  for (let pointIndex = 0; pointIndex < points.length; pointIndex += 1) {
-    const point = points[pointIndex];
-    const nextPoint = points[(pointIndex + 1) % points.length];
-    area += point.x * nextPoint.y - nextPoint.x * point.y;
+  const { pts, normals } = s;
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    const nm = normals[i];
+    const t = faceHit(px, py, dx, dy, a.x, a.y, b.x, b.y, nm.x, nm.y, r, bestT);
+    if (t >= 0) {
+      bestT = t;
+      best = { t, nx: nm.x, ny: nm.y };
+    }
   }
-  return area / 2;
+  if (r > 0) {
+    // 顶点圆角：严格小于，平局时优先使用平面法线，避免相邻砖块接缝处的异常反弹
+    for (const v of pts) {
+      const t = rayCircle(px, py, dx, dy, v.x, v.y, r);
+      if (t !== null && t < bestT) {
+        bestT = t;
+        best = normalHit(t, px + dx * t - v.x, py + dy * t - v.y);
+      }
+    }
+  }
+  return best;
 }
 
-/** 根据顶点顺序计算多边形边的外侧法线 */
-function getOutwardEdgeNormal(start: Point, end: Point, clockwise: boolean) {
-  const edgeX = end.x - start.x;
-  const edgeY = end.y - start.y;
-  const normalX = clockwise ? edgeY : -edgeY;
-  const normalY = clockwise ? -edgeX : edgeX;
-  const length = Math.hypot(normalX, normalY) || 1;
-  return { x: normalX / length, y: normalY / length };
+function normalHit(t: number, ox: number, oy: number): Hit {
+  const l = Math.hypot(ox, oy) || 1;
+  return { t, nx: ox / l, ny: oy / l };
 }
 
-/** 点到线段最近点，用于多边形边反弹 */
-function getClosestPointOnSegment(
-  pointX: number,
-  pointY: number,
-  startX: number,
-  startY: number,
-  endX: number,
-  endY: number,
-) {
-  const segmentX = endX - startX;
-  const segmentY = endY - startY;
-  const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY || 1;
-  const ratio = clamp(
-    ((pointX - startX) * segmentX + (pointY - startY) * segmentY) / segmentLengthSquared,
-    0,
-    1,
-  );
-  return {
-    x: startX + segmentX * ratio,
-    y: startY + segmentY * ratio,
-  };
+export function closestOnSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): Vec {
+  const ex = bx - ax;
+  const ey = by - ay;
+  const l2 = ex * ex + ey * ey;
+  let u = l2 > 0 ? ((px - ax) * ex + (py - ay) * ey) / l2 : 0;
+  u = u < 0 ? 0 : u > 1 ? 1 : u;
+  return { x: ax + ex * u, y: ay + ey * u };
 }
 
-/** 根据画布宽高选择当前使用的逻辑世界尺寸 */
-export function getWorldSizeForViewport(targetWidth: number, targetHeight: number) {
-  const safeAspectRatio =
-    targetWidth > 0 && targetHeight > 0
-      ? targetWidth / targetHeight
-      : WORLD_WIDTH / WORLD_HEIGHT;
-  const isPortrait = targetWidth < targetHeight;
-  const worldHeight = isPortrait ? PORTRAIT_WORLD_HEIGHT : WORLD_HEIGHT;
-  return {
-    worldWidth: worldHeight * safeAspectRatio,
-    worldHeight,
-  };
+/** 圆与形状的重叠；法线从形状指向圆心，用于把被移动障碍挤进去的球推出来 */
+export function circleOverlap(
+  cx: number,
+  cy: number,
+  r: number,
+  s: Shape,
+): Overlap | null {
+  if (s.kind === 'circle' || s.kind === 'capsule') {
+    let qx: number;
+    let qy: number;
+    if (s.kind === 'circle') {
+      qx = s.x;
+      qy = s.y;
+    } else {
+      const q = closestOnSegment(cx, cy, s.ax, s.ay, s.bx, s.by);
+      qx = q.x;
+      qy = q.y;
+    }
+    const R = s.r + r;
+    const ox = cx - qx;
+    const oy = cy - qy;
+    const d = Math.hypot(ox, oy);
+    if (d >= R) return null;
+    if (d < 1e-9) return { depth: R, nx: 0, ny: -1 };
+    return { depth: R - d, nx: ox / d, ny: oy / d };
+  }
+  const { pts, normals } = s;
+  const n = pts.length;
+  let maxS = -Infinity;
+  let mi = 0;
+  for (let i = 0; i < n; i++) {
+    const sd = (cx - pts[i].x) * normals[i].x + (cy - pts[i].y) * normals[i].y;
+    if (sd > maxS) {
+      maxS = sd;
+      mi = i;
+    }
+  }
+  if (maxS >= r) return null;
+  if (maxS <= 0) return { depth: r - maxS, nx: normals[mi].x, ny: normals[mi].y };
+  let bestD2 = Infinity;
+  let qx = 0;
+  let qy = 0;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    const q = closestOnSegment(cx, cy, a.x, a.y, b.x, b.y);
+    const d2 = (cx - q.x) ** 2 + (cy - q.y) ** 2;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      qx = q.x;
+      qy = q.y;
+    }
+  }
+  const d = Math.sqrt(bestD2);
+  if (d >= r || d < 1e-9) return null;
+  return { depth: r - d, nx: (cx - qx) / d, ny: (cy - qy) / d };
 }
 
-/** 返回逻辑画布区域，始终等比缩放以避免小球和砖块变形 */
-export function getWorldViewport(targetWidth: number, targetHeight: number) {
-  const { worldWidth, worldHeight } = getWorldSizeForViewport(targetWidth, targetHeight);
-  const scale = Math.min(targetWidth / worldWidth, targetHeight / worldHeight);
-  return {
-    scale,
-    scaleX: scale,
-    scaleY: scale,
-    worldWidth,
-    worldHeight,
-    offsetX: (targetWidth - worldWidth * scale) / 2,
-    offsetY: (targetHeight - worldHeight * scale) / 2,
-  };
+/** 点到形状的距离，点在形状内返回 0 */
+export function pointDistance(x: number, y: number, s: Shape): number {
+  if (s.kind === 'circle') return Math.max(0, Math.hypot(x - s.x, y - s.y) - s.r);
+  if (s.kind === 'capsule') {
+    const q = closestOnSegment(x, y, s.ax, s.ay, s.bx, s.by);
+    return Math.max(0, Math.hypot(x - q.x, y - q.y) - s.r);
+  }
+  const { pts, normals } = s;
+  const n = pts.length;
+  let inside = true;
+  for (let i = 0; i < n; i++) {
+    if ((x - pts[i].x) * normals[i].x + (y - pts[i].y) * normals[i].y > 0) {
+      inside = false;
+      break;
+    }
+  }
+  if (inside) return 0;
+  let best = Infinity;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    const q = closestOnSegment(x, y, a.x, a.y, b.x, b.y);
+    best = Math.min(best, Math.hypot(x - q.x, y - q.y));
+  }
+  return best;
+}
+
+/** 以法线 n 反射单位方向 d（仅当 d 朝向表面时） */
+export function reflect(dx: number, dy: number, nx: number, ny: number): Vec {
+  const dot = dx * nx + dy * ny;
+  if (dot >= 0) return { x: dx, y: dy };
+  return { x: dx - 2 * dot * nx, y: dy - 2 * dot * ny };
+}
+
+export function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
 }

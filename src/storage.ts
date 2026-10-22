@@ -1,68 +1,74 @@
-import {
-  BALL_LIMIT_OPTIONS,
-  BRICK_SURGE_MODES,
-  DEFAULT_GAME_CONFIG,
-  STORAGE_KEY,
-} from './constants';
-import type { GameState, StoredState } from './types';
-import type { BallLimit, BrickSurgeMode, GameConfig } from './types';
+// 本地存档（localStorage）：进度、星星、最佳分数、声音与语言偏好。
+// 存储不可用时保留游戏可玩性，并记录警告以便定位未保存的原因
+import type { Lang } from './i18n';
+import { isLang } from './i18n';
 
-/** 从 localStorage 读取最高关、最高分、静音偏好和玩法配置 */
-export function readStoredState(): StoredState {
+export interface SaveData {
+  lang: Lang | null;
+  sound: boolean;
+  music: boolean;
+  /** 已解锁的最高关卡下标（0 起） */
+  unlocked: number;
+  stars: number[];
+  best: number[];
+  endlessBest: number;
+  endlessLevel: number;
+}
+
+const KEY = 'neon-breakout:v1';
+
+export function defaults(): SaveData {
+  return {
+    lang: null,
+    sound: true,
+    music: true,
+    unlocked: 0,
+    stars: [],
+    best: [],
+    endlessBest: 0,
+    endlessLevel: 0,
+  };
+}
+
+const num = (v: unknown, fallback: number) =>
+  typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+const nums = (v: unknown) => (Array.isArray(v) ? v.map((x) => num(x, 0)) : []);
+
+/** 解析并校验存档，字段缺失或类型不对时用默认值 */
+export function parseSave(raw: string | null): SaveData {
+  const d = defaults();
+  if (!raw) return d;
   try {
-    const rawValue = window.localStorage.getItem(STORAGE_KEY);
-    if (!rawValue) {
-      return createDefaultStoredState();
-    }
-
-    const parsedValue = JSON.parse(rawValue) as Partial<StoredState>;
+    const o = JSON.parse(raw) as Record<string, unknown>;
     return {
-      highestUnlocked: Math.max(1, Number(parsedValue.highestUnlocked) || 1),
-      bestScore: Math.max(0, Number(parsedValue.bestScore) || 0),
-      muted: Boolean(parsedValue.muted),
-      config: readGameConfig(parsedValue.config),
+      lang: isLang(o.lang) ? o.lang : null,
+      sound: typeof o.sound === 'boolean' ? o.sound : d.sound,
+      music: typeof o.music === 'boolean' ? o.music : d.music,
+      unlocked: Math.max(0, Math.floor(num(o.unlocked, 0))),
+      stars: nums(o.stars),
+      best: nums(o.best),
+      endlessBest: num(o.endlessBest, 0),
+      endlessLevel: num(o.endlessLevel, 0),
     };
-  } catch (error) {
-    console.warn('读取本地记录失败', error);
-    return createDefaultStoredState();
+  } catch {
+    console.warn('本地存档无法解析，已使用默认记录');
+    return d;
   }
 }
 
-function createDefaultStoredState(): StoredState {
-  return {
-    highestUnlocked: 1,
-    bestScore: 0,
-    muted: false,
-    config: { ...DEFAULT_GAME_CONFIG },
-  };
-}
-
-function readGameConfig(config: Partial<GameConfig> | undefined): GameConfig {
-  const maxBalls = Number(config?.maxBalls);
-  const brickSurgeMode = config?.brickSurgeMode;
-  return {
-    maxBalls: BALL_LIMIT_OPTIONS.includes(maxBalls as BallLimit)
-      ? (maxBalls as BallLimit)
-      : DEFAULT_GAME_CONFIG.maxBalls,
-    brickSurgeMode: BRICK_SURGE_MODES.includes(brickSurgeMode as BrickSurgeMode)
-      ? (brickSurgeMode as BrickSurgeMode)
-      : DEFAULT_GAME_CONFIG.brickSurgeMode,
-  };
-}
-
-/** 将最高关、最高分、静音偏好和玩法配置写入 localStorage */
-export function persistStoredState(game: GameState) {
+export function loadSave(): SaveData {
   try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        highestUnlocked: game.highestUnlocked,
-        bestScore: game.bestScore,
-        muted: game.muted,
-        config: game.config,
-      }),
-    );
-  } catch (error) {
-    console.warn('保存本地记录失败', error);
+    return parseSave(localStorage.getItem(KEY));
+  } catch {
+    console.warn('无法读取本地存档，已使用默认记录');
+    return defaults();
+  }
+}
+
+export function writeSave(data: SaveData): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(data));
+  } catch {
+    console.warn('无法保存游戏记录，请检查浏览器的存储设置');
   }
 }

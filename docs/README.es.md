@@ -2,55 +2,43 @@
 
 [English](../README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [한국어](README.ko.md) | [Русский](README.ru.md)
 
-Un prototipo web de breakout para probar apuntado, control de la pala, poderes y ritmo de niveles. Funciona en navegadores de escritorio y móviles.
+`breakout-web` integra el juego completo de Fable, sus gráficos de neón, efectos y audio, sustituyendo el antiguo juego React por un motor nativo TypeScript. Compatible con navegadores de escritorio y móviles; el directorio original de Fable no se modifica.
 
-## Ejecutar
+## Desarrollo y verificación
 
 ```bash
 bun install
 bun run dev
 ```
 
-## Compilar
-
 ```bash
 bun run build
-```
-
-## Probar
-
-```bash
 bun run test
-```
-
-## Calidad
-
-```bash
 bun run lint
-bun run lint:fix
+bun run typecheck
 ```
 
-Los estilos están en `src/styles.less`.
+Se conserva Vite 5 + TypeScript 5.6, sin nuevas dependencias. La compilación genera un sitio estático estándar en `dist/`: debe servirse por HTTP(S), no es un único HTML que se abre con doble clic.
 
 ## Juego
 
-- Haz clic en Empezar, apunta y luego haz clic o suelta el dedo para disparar
-- En escritorio se usa ratón o flechas después del lanzamiento; en móvil se arrastra
-- Rompe todos los ladrillos destruibles para superar el nivel
-- Al superarlo, el popup aparece gradualmente mientras bolas y poderes salen de pantalla
-- Cada nivel tiene 3 vidas, con pausa, continuar, reintentar y menú principal
-- En la primera visita se detecta el idioma del navegador; el progreso, sonido e idioma se guardan en este navegador
+- Campaña de 5 capítulos y 30 niveles, con encuentros con jefes, selección de niveles y estrellas
+- Modo infinito con generación procedural por semilla, un jefe cada 10 pisos y una nueva semilla en cada partida nueva
+- 11 objetos: pala ancha, ralentización, multibola, perforación, abanico de cinco bolas, láser, imán, escudo, vida extra y dos efectos negativos: pala corta y aceleración
+- Doble multiplica por 2 las bolas actuales y Abanico por 5, hasta un máximo total de 32; las bolas se abren en abanico desde la posición de cada bola existente alrededor de su dirección original.
+- Los pasillos a ambos lados de la formación de bloques permiten llegar al espacio superior.
+- 9 idiomas de interfaz; detección inicial del idioma del navegador y selección en ajustes
 
-## Ladrillos y poderes
+## Controles
 
-- Los ladrillos pueden requerir de 1 a 12 golpes
-- Los obstáculos grises no se rompen; sus formas cambian la trayectoria de la bola
-- Los poderes incluyen pala ancha, ralentizar, doble bola, perforar y ráfaga de cinco bolas
+- Elige campaña, un nivel desbloqueado o modo infinito en el menú
+- Ratón: mueve para apuntar y haz clic para lanzar; después mueve la pala con el ratón
+- Teclado: ←/→ o A/D para la pala; Espacio, ↑ o W para lanzar; Esc o P para pausar/reanudar
+- Pantalla táctil: arrastra para apuntar y suelta para lanzar; después arrastra en cualquier parte del área de juego para mover la pala
+- Lanza las bolas retenidas por el imán con clic, al soltar el dedo o con una tecla de lanzamiento; la interfaz permite pausar, reintentar, avanzar y volver al menú
 
-## Archivos principales
+## Guardado en el navegador
 
-- `src/App.tsx`: UI, diálogos y entrada
-- `src/game.ts`: reglas y flujo de niveles
-- `src/geometry.ts`: ayudas de colisión
-- `src/render.ts`: renderizado canvas
-- `src/i18n.ts`: traducciones de la interfaz
+`localStorage` guarda desbloqueos, estrellas y mejores puntuaciones de campaña, récord de puntuación y piso más alto completado en infinito, además de idioma, efectos de sonido y música. **Recargar no restaura la partida en curso**. Los registros solo persisten si el almacenamiento está disponible.
+
+Se conservan los datos antiguos de `breakout-web`, sin migración automática porque las reglas de los niveles son distintas. Los datos de Fable del mismo origin (protocolo, host y puerto) siguen siendo compatibles con la clave `neon-breakout:v1`. Cambiar de origin no transfiere los datos.
