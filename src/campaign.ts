@@ -515,11 +515,11 @@ const CH5: LevelSource[] = [
 ];
 
 const CHAPTERS: { levels: LevelSource[]; meta: ChapterMeta }[] = [
-  { levels: CH1, meta: { speed: 1, drop: 0.16, traps: false } },
-  { levels: CH2, meta: { speed: 1.04, drop: 0.14, traps: true } },
-  { levels: CH3, meta: { speed: 1.08, drop: 0.13, traps: true } },
-  { levels: CH4, meta: { speed: 1.1, drop: 0.13, traps: true } },
-  { levels: CH5, meta: { speed: 1.14, drop: 0.12, traps: true } },
+  { levels: CH1, meta: { speed: 1, drop: 0.4, traps: false } },
+  { levels: CH2, meta: { speed: 1.04, drop: 0.35, traps: true } },
+  { levels: CH3, meta: { speed: 1.08, drop: 0.32, traps: true } },
+  { levels: CH4, meta: { speed: 1.1, drop: 0.28, traps: true } },
+  { levels: CH5, meta: { speed: 1.14, drop: 0.25, traps: true } },
 ];
 
 export const CHAPTER_COUNT = CHAPTERS.length;

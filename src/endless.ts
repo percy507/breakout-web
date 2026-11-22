@@ -245,7 +245,7 @@ function generate(n: number, rng: Rng, mechanisms: boolean): LevelDef {
     chapter: 0,
     speed: 1 + Math.min(0.3, (n - 1) * 0.02),
     dark: mechanisms && n >= 6 && rng.chance(0.18),
-    drop: 0.14,
+    drop: 0.35,
     traps: n >= 3,
     bodies: b.bodies,
   };
