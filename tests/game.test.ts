@@ -413,12 +413,16 @@ describe('power-ups', () => {
         g.applyPower('spread');
         g.applyPower('spread');
         if (initial > 25) g.applyPower('multi');
-        g.balls.length = initial;
+        g.balls.length = Math.min(g.balls.length, initial);
+        while (g.balls.length < initial) {
+          g.balls.push({ ...g.balls[0], id: 1000 + g.balls.length });
+        }
         g.balls.forEach((b, i) => Object.assign(b, { x: 50 + i, y: 400, dx: 0, dy: -1 }));
         const sources = g.balls.map((b) => ({ ...b }));
+        const expected = Math.min(MAX_BALLS, initial * (power === 'multi' ? 2 : 5));
         g.applyPower(power);
-        expect(g.balls).toHaveLength(MAX_BALLS);
-        expect(new Set(g.balls.map((b) => b.id)).size).toBe(MAX_BALLS);
+        expect(g.balls).toHaveLength(expected);
+        expect(new Set(g.balls.map((b) => b.id)).size).toBe(expected);
         for (const source of sources) {
           const children = g.balls.filter((b) => b.x === source.x && b.y === source.y);
           expect(children.length).toBeLessThanOrEqual(power === 'multi' ? 2 : 5);
@@ -433,9 +437,9 @@ describe('power-ups', () => {
             );
           }
         }
-        const capped = g.balls.map((b) => ({ ...b }));
+        const next = Math.min(MAX_BALLS, expected * (power === 'multi' ? 2 : 5));
         g.applyPower(power);
-        expect(g.balls).toEqual(capped);
+        expect(g.balls).toHaveLength(next);
       }
     },
   );

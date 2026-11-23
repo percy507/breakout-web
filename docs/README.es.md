@@ -25,7 +25,7 @@ Se conserva Vite 5 + TypeScript 5.6, sin nuevas dependencias. La compilación ge
 - Campaña de 5 capítulos y 30 niveles, con encuentros con jefes, selección de niveles y estrellas
 - Modo infinito con generación procedural por semilla, un jefe cada 10 pisos y una nueva semilla en cada partida nueva
 - 11 objetos: pala ancha, ralentización, multibola, perforación, abanico de cinco bolas, láser, imán, escudo, vida extra y dos efectos negativos: pala corta y aceleración
-- Doble multiplica por 2 las bolas actuales y Abanico por 5, hasta un máximo total de 32; las bolas se abren en abanico desde la posición de cada bola existente alrededor de su dirección original.
+- Doble multiplica por 2 las bolas actuales y Abanico por 5, hasta un máximo total de 200; las bolas se abren en abanico desde la posición de cada bola existente alrededor de su dirección original.
 - Los pasillos a ambos lados de la formación de bloques permiten llegar al espacio superior.
 - 9 idiomas de interfaz; detección inicial del idioma del navegador y selección en ajustes
 

@@ -25,7 +25,7 @@ La chaîne existante Vite 5 + TypeScript 5.6 est conservée, sans nouvelle dépe
 - Campagne de 5 chapitres et 30 niveaux, avec rencontres avec des boss, sélection des niveaux et étoiles
 - Mode infini généré à partir d'une graine, avec un boss tous les 10 étages ; nouvelle graine à chaque nouvelle partie
 - 11 objets : raquette élargie, ralentissement, multiballe, perforation, éventail de cinq balles, laser, aimant, bouclier, vie supplémentaire et deux effets négatifs : raquette rétrécie et accélération
-- Double multiplie par 2 le nombre de balles présentes et Éventail par 5, avec un maximum de 32 au total ; les balles se déploient depuis la position de chaque balle autour de sa direction initiale.
+- Double multiplie par 2 le nombre de balles présentes et Éventail par 5, avec un maximum de 200 au total ; les balles se déploient depuis la position de chaque balle autour de sa direction initiale.
 - Des passages de chaque côté de la formation de briques permettent aux balles de passer au-dessus.
 - Interface en 9 langues, détectée selon le navigateur au premier lancement et modifiable dans les paramètres
 

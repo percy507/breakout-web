@@ -21,7 +21,7 @@ export const MAX_BOUNCE = (62 * Math.PI) / 180;
 
 export const BALL_R = 8;
 export const BALL_SPEED = 470;
-export const MAX_BALLS = 32;
+export const MAX_BALLS = 200;
 /** 瞄准角下限（与水平线夹角） */
 export const MIN_AIM = (12 * Math.PI) / 180;
 /** 反弹后竖直分量下限，防止小球水平来回弹 */
@@ -69,15 +69,15 @@ export interface PowerDef {
 export const POWERS: Record<PowerType, PowerDef> = {
   wide: { color: '#22e5ff', good: true, duration: 15, weight: 12 },
   slow: { color: '#5b8cff', good: true, duration: 10, weight: 9 },
-  multi: { color: '#ffd23f', good: true, duration: 0, weight: 13 },
-  pierce: { color: '#ff8a3d', good: true, duration: 8, weight: 7 },
-  spread: { color: '#b56bff', good: true, duration: 0, weight: 9 },
-  laser: { color: '#ff4fd8', good: true, duration: 10, weight: 8 },
+  multi: { color: '#ffd23f', good: true, duration: 0, weight: 18 },
+  pierce: { color: '#ff8a3d', good: true, duration: 8, weight: 12 },
+  spread: { color: '#b56bff', good: true, duration: 0, weight: 15 },
+  laser: { color: '#ff4fd8', good: true, duration: 10, weight: 11 },
   magnet: { color: '#4cff9a', good: true, duration: 12, weight: 7 },
-  shield: { color: '#9ef0ff', good: true, duration: 12, weight: 7 },
-  life: { color: '#ff5c8a', good: true, duration: 0, weight: 2.5 },
-  shrink: { color: '#ff3355', good: false, duration: 12, weight: 7 },
-  fast: { color: '#ff3355', good: false, duration: 10, weight: 7 },
+  shield: { color: '#9ef0ff', good: true, duration: 12, weight: 10 },
+  life: { color: '#ff5c8a', good: true, duration: 0, weight: 5 },
+  shrink: { color: '#ff3355', good: false, duration: 12, weight: 10 },
+  fast: { color: '#ff3355', good: false, duration: 10, weight: 10 },
 };
 
 export const POWER_ORDER: PowerType[] = [

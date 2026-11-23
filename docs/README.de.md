@@ -25,7 +25,7 @@ Die bestehende Toolchain mit Vite 5 + TypeScript 5.6 bleibt erhalten, ohne neue 
 - Kampagne mit 5 Kapiteln und 30 Levels, Bossbegegnungen, Levelauswahl und Sternen
 - Seedbasierte, prozedural erzeugte Endloslevels mit einem Boss alle 10 Ebenen; jeder neue Lauf erhält einen neuen Seed
 - 11 Items: breiter Schläger, Verlangsamung, Multiball, Durchschlag, Fünf-Ball-Fächer, Laser, Magnet, Schild, Zusatzleben und zwei negative Effekte: kurzer Schläger und Beschleunigung
-- Doppel vervielfacht die aktuelle Ballzahl mit 2, Fächer mit 5, bis insgesamt höchstens 32 Bälle; die Bälle fächern sich an der Position jedes vorhandenen Balls um dessen bisherige Flugrichtung auf.
+- Doppel vervielfacht die aktuelle Ballzahl mit 2, Fächer mit 5, bis insgesamt höchstens 200 Bälle; die Bälle fächern sich an der Position jedes vorhandenen Balls um dessen bisherige Flugrichtung auf.
 - Durchgänge auf beiden Seiten der Steinformation lassen Bälle nach oben hinter die Steine gelangen.
 - 9 Oberflächensprachen, beim ersten Besuch anhand der Browsersprache gewählt und in den Einstellungen änderbar
 

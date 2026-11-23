@@ -25,7 +25,7 @@ The existing Vite 5 + TypeScript 5.6 toolchain is retained, with no new dependen
 - Campaign: 5 chapters, 30 levels, boss encounters, level selection, and stars
 - Endless: seeded procedural levels with a boss every 10 floors; a new run gets a new seed
 - 11 powerups: wide paddle, slow, multiball, pierce, five-ball spread, laser, magnet, shield, extra life, plus negative shrink and fast effects
-- Double multiplies the current ball count by 2 and Spread by 5, up to 32 balls total; balls fan out from each existing ball’s position around its original direction.
+- Double multiplies the current ball count by 2 and Spread by 5, up to 200 balls total; balls fan out from each existing ball’s position around its original direction.
 - Passages on both sides of the brick formation let balls reach the space above it.
 - 9 interface languages, detected from the browser on first visit and selectable in settings
 

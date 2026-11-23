@@ -2,7 +2,7 @@
 // 每个候选关卡都要通过 validate.levelIssues，不合格就换种子重来，最后兜底为纯砖块关卡。
 import { COLS, W } from './config';
 import type { BrickType, LevelDef } from './levels';
-import { Builder, cx, cy, orbit, slide, spin } from './levels';
+import { Builder, cx, cy, normalizeGold, orbit, slide, spin } from './levels';
 import type { Rng } from './rng';
 import { createRng } from './rng';
 import { levelIssues } from './validate';
@@ -165,28 +165,13 @@ function generate(n: number, rng: Rng, mechanisms: boolean): LevelDef {
         if (!mask[r][c]) continue;
         const hp = hpAt(r, rows);
         const roll = rng.next();
-        const type: BrickType =
-          roll < bombP ? 'bomb' : roll < bombP + 0.035 ? 'gold' : 'normal';
-        const h = type === 'bomb' ? 1 : type === 'gold' ? 2 : hp;
+        const type: BrickType = roll < bombP ? 'bomb' : 'normal';
+        const h = type === 'bomb' ? 1 : hp;
         b.brick(cx(c), cy(r + offset), h, { type });
         b.brick(cx(COLS - 1 - c), cy(r + offset), h, { type });
       }
     }
     fieldBottom = cy(rows + offset) + 12;
-    // 保证至少有一对金砖
-    const normals = b.bodies.filter((d) => d.kind === 'brick' && d.brick === 'normal');
-    if (!b.bodies.some((d) => d.brick === 'gold') && normals.length > 4) {
-      const pick = rng.pick(normals);
-      pick.brick = 'gold';
-      pick.hp = 2;
-      const twin = normals.find(
-        (d) => Math.abs(d.x - (W - pick.x)) < 1 && Math.abs(d.y - pick.y) < 1,
-      );
-      if (twin) {
-        twin.brick = 'gold';
-        twin.hp = 2;
-      }
-    }
   }
 
   if (mechanisms) {
@@ -238,6 +223,8 @@ function generate(n: number, rng: Rng, mechanisms: boolean): LevelDef {
       if (a) b.portals(a.x, a.y, W - a.x, a.y);
     }
   }
+
+  normalizeGold(b.bodies, () => rng.int(1, 5));
 
   return {
     id: `∞${n}`,

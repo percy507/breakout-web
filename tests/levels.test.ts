@@ -13,6 +13,11 @@ describe('campaign levels', () => {
     '%s %s is valid and fully reachable',
     (_id, _name, level) => {
       expect(levelIssues(level)).toEqual([]);
+      const gold = level.bodies.filter(
+        (body) => body.kind === 'brick' && body.brick === 'gold',
+      );
+      expect(gold).toHaveLength(6);
+      expect(gold.every((body) => body.hp >= 1 && body.hp <= 5)).toBe(true);
     },
   );
 });
@@ -27,6 +32,11 @@ describe('endless generator', () => {
       for (let n = 1; n <= 30; n++) {
         const lv = endlessLevel(n, seed);
         expect(levelIssues(lv), `seed ${seed} level ${n}`).toEqual([]);
+        const gold = lv.bodies.filter(
+          (body) => body.kind === 'brick' && body.brick === 'gold',
+        );
+        expect(gold, `seed ${seed} level ${n} gold count`).toHaveLength(6);
+        expect(gold.every((body) => body.hp >= 1 && body.hp <= 5)).toBe(true);
       }
     }
   });

@@ -336,6 +336,37 @@ export class Builder {
   }
 }
 
+const GOLD_COUNT = 6;
+const GOLD_MIN_HP = 1;
+const GOLD_MAX_HP = 5;
+
+/** 统一关卡中的金砖数量与生命值范围 */
+export function normalizeGold(
+  bodies: BodyDef[],
+  nextHp: (index: number) => number = (index) => 1 + (index % 5),
+): void {
+  const gold = bodies.filter((body) => body.kind === 'brick' && body.brick === 'gold');
+  for (const body of gold.splice(GOLD_COUNT)) body.brick = 'normal';
+
+  const candidates = bodies
+    .filter((body) => body.kind === 'brick' && body.brick === 'normal')
+    .sort(
+      (a, b) =>
+        Number(a.motion !== null) - Number(b.motion !== null) || a.y - b.y || a.x - b.x,
+    );
+  for (const body of candidates) {
+    if (gold.length >= GOLD_COUNT) break;
+    body.brick = 'gold';
+    gold.push(body);
+  }
+  if (gold.length !== GOLD_COUNT)
+    throw new Error(`level must contain ${GOLD_COUNT} gold bricks`);
+
+  gold.forEach((body, index) => {
+    body.hp = Math.max(GOLD_MIN_HP, Math.min(GOLD_MAX_HP, Math.round(nextHp(index))));
+  });
+}
+
 export interface ChapterMeta {
   speed: number;
   drop: number;
@@ -351,6 +382,7 @@ export function buildLevel(
   const b = new Builder();
   if (src.grid) b.grid(src.grid);
   src.build?.(b);
+  normalizeGold(b.bodies);
   return {
     id,
     name: src.name,
