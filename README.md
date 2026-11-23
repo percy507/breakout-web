@@ -23,7 +23,7 @@ The existing Vite 5 + TypeScript 5.6 toolchain is retained, with no new dependen
 ## Gameplay
 
 - Campaign: 5 chapters, 30 levels, boss encounters, level selection, and stars
-- Endless: seeded procedural levels with a boss every 10 floors; a new run gets a new seed
+- Endless: seeded procedural levels with a boss every 10 floors; a new run gets a new seed, and lives carry between cleared floors without a cap
 - 11 powerups: wide paddle, slow, multiball, pierce, five-ball spread, laser, magnet, shield, extra life, plus negative shrink and fast effects
 - Double multiplies the current ball count by 2 and Spread by 5, up to 200 balls total; balls fan out from each existing ball’s position around its original direction.
 - Passages on both sides of the brick formation let balls reach the space above it.
@@ -39,6 +39,6 @@ The existing Vite 5 + TypeScript 5.6 toolchain is retained, with no new dependen
 
 ## Browser saves
 
-`localStorage` saves campaign unlocks, stars and best scores, endless best score and highest cleared floor, plus language and sound/music preferences. Refreshing does **not** restore the current run. Storage must be available for records to persist.
+`localStorage` saves campaign unlocks, stars and best scores, endless best score and highest cleared floor, plus language and sound/music preferences. Endless runs are checkpointed after each cleared floor with their seed, score and lives; refreshing resumes from the next floor, while in-level physics is not restored. Storage must be available for records to persist.
 
 Old `breakout-web` saves are retained but are not automatically migrated because level rules differ. Existing Fable saves on the same origin (scheme, host, port) remain compatible through the `neon-breakout:v1` key. Changing origin does not transfer saves.

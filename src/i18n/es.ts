@@ -7,6 +7,8 @@ export const es: Dict = {
   continueLevel: 'Continuar {level}',
   levels: 'Niveles',
   endless: 'Infinito',
+  endlessContinue: 'Continuar infinito {n}',
+  newRun: 'Nueva partida',
   howToPlay: 'Cómo jugar',
   settings: 'Ajustes',
   totalStars: 'Estrellas {n}/{total}',
@@ -31,6 +33,7 @@ export const es: Dict = {
   allClear: '¡Superaste todos los niveles! ¡Eres una leyenda neón!',
   newRecord: '¡Nuevo récord!',
   livesBonus: 'Bonus de vidas',
+  nextLives: 'Vidas del siguiente nivel',
   maxCombo: 'Combo máximo',
   time: 'Tiempo',
   gameOver: 'Sin energía',
@@ -50,7 +53,7 @@ export const es: Dict = {
   chapter4: 'Ciudad de engranajes',
   chapter5: 'El núcleo',
   helpGoal:
-    'Rompe todos los bloques rompibles para superar el nivel. Tienes 3 vidas por nivel.',
+    'Rompe todos los bloques rompibles para superar el nivel. La campaña empieza cada nivel con 3 vidas; el modo infinito conserva las vidas entre niveles.',
   helpAim:
     'Apunta antes de cada lanzamiento: mueve el ratón o arrastra el dedo siguiendo la guía y haz clic o suelta para disparar.',
   helpMovePC: 'PC: mueve la pala con el ratón o con las teclas ← →. Esc o P pausa.',

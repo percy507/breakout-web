@@ -8,6 +8,8 @@ export const en = {
   continueLevel: 'Continue {level}',
   levels: 'Levels',
   endless: 'Endless',
+  endlessContinue: 'Continue endless {n}',
+  newRun: 'New run',
   howToPlay: 'How to Play',
   settings: 'Settings',
   totalStars: 'Stars {n}/{total}',
@@ -36,6 +38,7 @@ export const en = {
   allClear: 'Every level cleared. You are a neon legend!',
   newRecord: 'New Record!',
   livesBonus: 'Lives bonus',
+  nextLives: 'Next level lives',
   maxCombo: 'Max combo',
   time: 'Time',
   gameOver: 'Out of Energy',
@@ -57,7 +60,8 @@ export const en = {
   chapter4: 'Clockwork City',
   chapter5: 'The Core',
 
-  helpGoal: 'Break every breakable brick to clear the level. You get 3 lives per level.',
+  helpGoal:
+    'Break every breakable brick to clear the level. Campaign levels start with 3 lives; endless mode carries lives between levels.',
   helpAim:
     'Aim before every launch: move the mouse or drag your finger and follow the guide line, then click or release to fire.',
   helpMovePC: 'PC: move the paddle with the mouse or the ← → keys. Esc or P pauses.',

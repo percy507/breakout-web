@@ -70,6 +70,29 @@ describe('storage', () => {
     expect(s.stars).toEqual([3, 0]);
     expect(s.best).toEqual([]);
   });
+
+  it('sanitises endless checkpoints and score fields', () => {
+    expect(
+      parseSave(
+        JSON.stringify({
+          stars: [4, -1, 1.8],
+          best: [-5, 12],
+          endlessBest: -10,
+          endlessLevel: -2.7,
+          endlessRun: { depth: 4.8, seed: 17.9, score: -3, lives: 8.6 },
+        }),
+      ),
+    ).toMatchObject({
+      stars: [3, 0, 1],
+      best: [0, 12],
+      endlessBest: 0,
+      endlessLevel: 0,
+      endlessRun: { depth: 4, seed: 17, score: 0, lives: 8 },
+    });
+    expect(
+      parseSave(JSON.stringify({ endlessRun: { depth: 0, lives: 0 } })).endlessRun,
+    ).toBeNull();
+  });
 });
 
 describe('storage availability', () => {

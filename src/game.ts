@@ -6,6 +6,7 @@ import {
   brickColor,
   CELL_H,
   CELL_W,
+  CLEAR_BONUS_MAX_LIVES,
   H,
   ITEM_H,
   ITEM_W,
@@ -186,9 +187,15 @@ export class Game {
   private moving: Body[] = [];
   private partner = new Map<Body, Body>();
 
-  constructor(level: LevelDef, opts: { mode: Mode; seed?: number; score?: number }) {
+  constructor(
+    level: LevelDef,
+    opts: { mode: Mode; seed?: number; score?: number; lives?: number },
+  ) {
     this.level = level;
     this.mode = opts.mode;
+    const startingLives = Math.max(0, Math.floor(opts.lives ?? LIVES));
+    this.lives =
+      this.mode === 'endless' ? startingLives : Math.min(MAX_LIVES, startingLives);
     this.score = opts.score ?? 0;
     this.rng = createRng(opts.seed ?? 12345);
     const portals = new Map<number, Body>();
@@ -834,7 +841,8 @@ export class Game {
         e[type] = POWERS[type].duration;
         break;
       case 'life':
-        this.lives = Math.min(MAX_LIVES, this.lives + 1);
+        this.lives =
+          this.mode === 'endless' ? this.lives + 1 : Math.min(MAX_LIVES, this.lives + 1);
         break;
       case 'multi':
         this.splitBalls(2);
@@ -916,7 +924,8 @@ export class Game {
 
   private onClear(): void {
     if (this.phase === 'clear' || this.phase === 'lost') return;
-    this.clearBonus = this.mode === 'demo' ? 0 : this.lives * 1000;
+    this.clearBonus =
+      this.mode === 'demo' ? 0 : Math.min(this.lives, CLEAR_BONUS_MAX_LIVES) * 1000;
     this.addScore(this.clearBonus);
     for (const b of this.balls) {
       if (b.stuck) {

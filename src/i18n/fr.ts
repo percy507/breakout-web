@@ -7,6 +7,8 @@ export const fr: Dict = {
   continueLevel: 'Continuer {level}',
   levels: 'Niveaux',
   endless: 'Infini',
+  endlessContinue: 'Continuer l’infini {n}',
+  newRun: 'Nouvelle partie',
   howToPlay: 'Comment jouer',
   settings: 'Paramètres',
   totalStars: 'Étoiles {n}/{total}',
@@ -31,6 +33,7 @@ export const fr: Dict = {
   allClear: 'Tous les niveaux sont terminés. Vous êtes une légende néon !',
   newRecord: 'Nouveau record !',
   livesBonus: 'Bonus de vies',
+  nextLives: 'Vies du niveau suivant',
   maxCombo: 'Combo max',
   time: 'Temps',
   gameOver: "Plus d'énergie",
@@ -50,7 +53,7 @@ export const fr: Dict = {
   chapter4: 'Cité des rouages',
   chapter5: 'Le Noyau',
   helpGoal:
-    'Cassez toutes les briques cassables pour terminer le niveau. Vous avez 3 vies par niveau.',
+    'Cassez toutes les briques cassables pour terminer le niveau. La campagne commence chaque niveau avec 3 vies ; le mode infini conserve les vies entre les niveaux.',
   helpAim:
     'Visez avant chaque lancer : bougez la souris ou glissez le doigt en suivant la ligne guide, puis cliquez ou relâchez pour tirer.',
   helpMovePC:

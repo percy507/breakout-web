@@ -4,7 +4,7 @@ import './styles.css';
 import { Sound } from './audio';
 import { Autopilot } from './autopilot';
 import { CAMPAIGN } from './campaign';
-import { H, HP_COLORS, POWERS, W } from './config';
+import { H, HP_COLORS, LIVES, POWERS, W } from './config';
 import { endlessLevel } from './endless';
 import { Fx } from './fx';
 import type { GameEvent, Keys, Mode } from './game';
@@ -114,10 +114,15 @@ function startCampaign(i: number): void {
   );
 }
 
-function startEndless(depth: number, seed: number, score: number): void {
-  if (depth === 1) runStartBest = save.endlessBest;
+function startEndless(depth: number, seed: number, score: number, lives = LIVES): void {
+  if (depth === 1 || session.mode !== 'endless') runStartBest = save.endlessBest;
   enterGame(
-    new Game(endlessLevel(depth, seed), { mode: 'endless', seed: seed + depth, score }),
+    new Game(endlessLevel(depth, seed), {
+      mode: 'endless',
+      seed: seed + depth,
+      score,
+      lives,
+    }),
     'endless',
     depth,
     seed,
@@ -184,6 +189,14 @@ function onAction(action: string, arg: string): void {
       render();
       break;
     case 'endless':
+      if (save.endlessRun) {
+        const run = save.endlessRun;
+        startEndless(run.depth, run.seed, run.score, run.lives);
+      } else startEndless(1, newSeed(), 0);
+      break;
+    case 'new-endless':
+      save.endlessRun = null;
+      writeSave(save);
       startEndless(1, newSeed(), 0);
       break;
     case 'start-level':
@@ -196,12 +209,20 @@ function onAction(action: string, arg: string): void {
       resume();
       break;
     case 'retry':
-      if (session.mode === 'endless') startEndless(1, newSeed(), 0);
-      else startCampaign(session.index);
+      if (session.mode === 'endless') {
+        save.endlessRun = null;
+        writeSave(save);
+        startEndless(1, newSeed(), 0);
+      } else startCampaign(session.index);
       break;
     case 'next':
       if (session.mode === 'endless')
-        startEndless(session.index + 1, session.seed, session.game.score);
+        startEndless(
+          session.index + 1,
+          session.seed,
+          session.game.score,
+          session.game.lives,
+        );
       else startCampaign(session.index + 1);
       break;
     case 'menu':
@@ -262,6 +283,7 @@ function onClear(): void {
       stars: g.stars,
       score: g.score,
       bonus: g.clearBonus,
+      lives: g.lives,
       maxCombo: g.maxCombo,
       time: g.time,
       best: save.best[i],
@@ -273,12 +295,19 @@ function onClear(): void {
   } else {
     save.endlessLevel = Math.max(save.endlessLevel, session.index);
     save.endlessBest = Math.max(save.endlessBest, g.score);
+    save.endlessRun = {
+      depth: session.index + 1,
+      seed: session.seed,
+      score: g.score,
+      lives: g.lives,
+    };
     writeSave(save);
     result = {
       endless: true,
       stars: 0,
       score: g.score,
       bonus: g.clearBonus,
+      lives: g.lives,
       maxCombo: g.maxCombo,
       time: g.time,
       best: save.endlessBest,
@@ -297,12 +326,14 @@ function onGameOver(): void {
   if (session.mode === 'endless') {
     const record = g.score > runStartBest;
     save.endlessBest = Math.max(save.endlessBest, g.score);
+    save.endlessRun = null;
     writeSave(save);
     result = {
       endless: true,
       stars: 0,
       score: g.score,
       bonus: 0,
+      lives: g.lives,
       maxCombo: g.maxCombo,
       time: g.time,
       best: save.endlessBest,
@@ -317,6 +348,7 @@ function onGameOver(): void {
       stars: 0,
       score: g.score,
       bonus: 0,
+      lives: g.lives,
       maxCombo: g.maxCombo,
       time: g.time,
       best: save.best[session.index] ?? 0,

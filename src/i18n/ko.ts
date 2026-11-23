@@ -7,6 +7,8 @@ export const ko: Dict = {
   continueLevel: '이어하기 {level}',
   levels: '스테이지 선택',
   endless: '무한 모드',
+  endlessContinue: '무한 {n} 계속하기',
+  newRun: '새 게임',
   howToPlay: '게임 방법',
   settings: '설정',
   totalStars: '별 {n}/{total}',
@@ -31,6 +33,7 @@ export const ko: Dict = {
   allClear: '모든 스테이지 클리어! 당신이 바로 네온의 전설!',
   newRecord: '신기록!',
   livesBonus: '남은 목숨 보너스',
+  nextLives: '다음 스테이지 목숨',
   maxCombo: '최대 콤보',
   time: '시간',
   gameOver: '에너지 고갈',
@@ -49,7 +52,8 @@ export const ko: Dict = {
   chapter3: '연쇄 반응',
   chapter4: '톱니바퀴 도시',
   chapter5: '최후의 코어',
-  helpGoal: '부술 수 있는 벽돌을 모두 부수면 클리어. 스테이지마다 목숨은 3개입니다.',
+  helpGoal:
+    '부술 수 있는 벽돌을 모두 부수면 클리어. 캠페인은 스테이지마다 목숨 3개로 시작하고, 무한 모드에서는 스테이지 사이에 목숨을 이어갑니다.',
   helpAim:
     '발사 전에 먼저 조준하세요. 마우스를 움직이거나 손가락을 드래그해 가이드선을 확인한 뒤, 클릭하거나 손을 떼면 발사됩니다.',
   helpMovePC: 'PC: 마우스나 ← → 키로 패들을 움직입니다. Esc 또는 P로 일시정지.',

@@ -1,7 +1,7 @@
 // DOM 界面层：菜单、选关、说明、设置、弹窗与顶部 HUD。
 // 只负责展示与收集点击（data-action），状态与流程由 main.ts 决定。
 import { CAMPAIGN, CHAPTER_COUNT, LEVELS_PER_CHAPTER } from './campaign';
-import { CHAPTER_HUES, POWER_ORDER, POWERS } from './config';
+import { CHAPTER_HUES, LIVES, MAX_LIVES, POWER_ORDER, POWERS } from './config';
 import type { TKey } from './i18n';
 import { getLang, LANGS, t } from './i18n';
 import type { ChipKind } from './render';
@@ -16,6 +16,7 @@ export interface Result {
   stars: number;
   score: number;
   bonus: number;
+  lives: number;
   maxCombo: number;
   time: number;
   best: number;
@@ -139,11 +140,14 @@ export class Ui {
       L.lang = lang;
     }
     if (lives !== L.lives) {
-      this.hud.lives.innerHTML = Array.from(
-        { length: Math.max(lives, 3) },
-        (_, i) => `<span class="${i < lives ? 'on' : ''}">♥</span>`,
-      ).join('');
-      this.hud.lives.setAttribute('aria-label', `♥ ${lives}`);
+      this.hud.lives.innerHTML =
+        lives > MAX_LIVES
+          ? `<span class="on">♥</span><span class="count">×${fmt(lives)}</span>`
+          : Array.from(
+              { length: Math.max(lives, LIVES) },
+              (_, i) => `<span class="${i < lives ? 'on' : ''}">♥</span>`,
+            ).join('');
+      this.hud.lives.setAttribute('aria-label', `♥ ${fmt(lives)}`);
       if (L.lives >= 0 && lives < L.lives) {
         this.hud.lives.classList.remove('hurt');
         void this.hud.lives.offsetWidth;
@@ -180,7 +184,8 @@ export class Ui {
       <nav class="menu-buttons">
         <button class="btn primary big" data-action="play" data-autofocus>${esc(play)}</button>
         ${btn('levels', t('levels'))}
-        ${btn('endless', t('endless'))}
+        ${save.endlessRun ? btn('endless', t('endlessContinue', { n: save.endlessRun.depth })) : btn('endless', t('endless'))}
+        ${save.endlessRun ? btn('new-endless', t('newRun'), 'small') : ''}
         <div class="row">${btn('help', t('howToPlay'), 'small')}${btn('settings', t('settings'), 'small')}</div>
       </nav>
       <footer class="menu-stats">
@@ -285,6 +290,7 @@ export class Ui {
         const rows = [
           [t('score'), fmt(r.score)],
           [t('livesBonus'), `+${fmt(r.bonus)}`],
+          ...(r.endless ? [[t('nextLives'), fmt(r.lives)]] : []),
           [t('maxCombo'), `×${r.maxCombo}`],
           [t('time'), clock(r.time)],
         ];

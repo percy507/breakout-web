@@ -5,6 +5,7 @@ import {
   BALL_SPEED,
   H,
   MAX_BALLS,
+  MAX_LIVES,
   MIN_AIM,
   MIN_VERTICAL,
   PADDLE_Y,
@@ -102,6 +103,50 @@ describe('serve & aim', () => {
 });
 
 describe('bricks & level flow', () => {
+  it('carries unlimited lives in endless mode while keeping campaign capped', () => {
+    const endless = new Game(
+      level((b) => b.brick(300, 100, 1)),
+      {
+        mode: 'endless',
+        lives: MAX_LIVES,
+      },
+    );
+    endless.applyPower('life');
+    expect(endless.lives).toBe(MAX_LIVES + 1);
+
+    const next = new Game(
+      level((b) => b.brick(300, 100, 1)),
+      {
+        mode: 'endless',
+        lives: endless.lives,
+      },
+    );
+    expect(next.lives).toBe(endless.lives);
+
+    const campaign = new Game(
+      level((b) => b.brick(300, 100, 1)),
+      {
+        mode: 'campaign',
+        lives: MAX_LIVES,
+      },
+    );
+    campaign.applyPower('life');
+    expect(campaign.lives).toBe(MAX_LIVES);
+  });
+
+  it('keeps unlimited lives while limiting their clear bonus contribution', () => {
+    const g = new Game(
+      level((b) => b.brick(300, 100, 1)),
+      {
+        mode: 'endless',
+        lives: 100,
+      },
+    );
+    g.damageBrick(g.bodies[0], 1);
+    expect(g.lives).toBe(100);
+    expect(g.clearBonus).toBe(10000);
+  });
+
   it('damages a brick and bounces the ball back', () => {
     const g = new Game(
       level((b) => b.brick(300, 200, 3)),

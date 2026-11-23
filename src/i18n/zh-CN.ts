@@ -8,6 +8,8 @@ export const zhCN: Dict = {
   continueLevel: '继续 {level}',
   levels: '选择关卡',
   endless: '无尽模式',
+  endlessContinue: '继续无尽 {n}',
+  newRun: '新开一局',
   howToPlay: '玩法说明',
   settings: '设置',
   totalStars: '星星 {n}/{total}',
@@ -36,6 +38,7 @@ export const zhCN: Dict = {
   allClear: '全部关卡已通关，你就是霓虹传奇！',
   newRecord: '新纪录！',
   livesBonus: '剩余生命奖励',
+  nextLives: '下一关生命',
   maxCombo: '最高连击',
   time: '用时',
   gameOver: '能量耗尽',
@@ -57,7 +60,8 @@ export const zhCN: Dict = {
   chapter4: '齿轮之城',
   chapter5: '终极核心',
 
-  helpGoal: '打碎所有可破坏的砖块即可通关，每关 3 条生命。',
+  helpGoal:
+    '打碎所有可破坏的砖块即可通关。战役模式每关从 3 条生命开始，无尽模式会在关卡间保留生命。',
   helpAim: '每次发射前先瞄准：移动鼠标或拖动手指，参考辅助线，再点击或松开手指发射。',
   helpMovePC: '电脑：用鼠标或 ← → 键移动挡板，Esc 或 P 暂停。',
   helpMoveTouch: '手机：在屏幕任意位置拖动手指即可移动挡板。',

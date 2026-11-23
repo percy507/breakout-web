@@ -7,6 +7,8 @@ export const ja: Dict = {
   continueLevel: '続きから {level}',
   levels: 'ステージ選択',
   endless: 'エンドレス',
+  endlessContinue: 'エンドレス {n} から再開',
+  newRun: '新しいプレイ',
   howToPlay: '遊び方',
   settings: '設定',
   totalStars: 'スター {n}/{total}',
@@ -31,6 +33,7 @@ export const ja: Dict = {
   allClear: '全ステージクリア！君こそネオンの伝説だ！',
   newRecord: '新記録！',
   livesBonus: '残りライフボーナス',
+  nextLives: '次ステージのライフ',
   maxCombo: '最大コンボ',
   time: 'タイム',
   gameOver: 'エネルギー切れ',
@@ -49,7 +52,8 @@ export const ja: Dict = {
   chapter3: '連鎖反応',
   chapter4: '歯車の街',
   chapter5: '究極コア',
-  helpGoal: '壊せるブロックをすべて壊すとクリア。各ステージのライフは 3 つ。',
+  helpGoal:
+    '壊せるブロックをすべて壊すとクリア。キャンペーンは各ステージ 3 ライフで開始し、エンドレスではステージ間でライフを引き継ぎます。',
   helpAim:
     '発射の前に狙いを定めよう。マウスを動かすか指をドラッグしてガイド線を確認し、クリックするか指を離して発射。',
   helpMovePC: 'PC：マウスまたは ← → キーでパドルを移動。Esc か P でポーズ。',

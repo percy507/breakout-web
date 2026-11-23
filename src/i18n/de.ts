@@ -7,6 +7,8 @@ export const de: Dict = {
   continueLevel: 'Weiter {level}',
   levels: 'Level',
   endless: 'Endlos',
+  endlessContinue: 'Endlos {n} fortsetzen',
+  newRun: 'Neuer Lauf',
   howToPlay: 'Spielanleitung',
   settings: 'Einstellungen',
   totalStars: 'Sterne {n}/{total}',
@@ -31,6 +33,7 @@ export const de: Dict = {
   allClear: 'Alle Level geschafft. Du bist eine Neon-Legende!',
   newRecord: 'Neuer Rekord!',
   livesBonus: 'Lebensbonus',
+  nextLives: 'Leben im nächsten Level',
   maxCombo: 'Max. Combo',
   time: 'Zeit',
   gameOver: 'Keine Energie mehr',
@@ -50,7 +53,7 @@ export const de: Dict = {
   chapter4: 'Zahnradstadt',
   chapter5: 'Der Kern',
   helpGoal:
-    'Zerstöre alle zerbrechlichen Steine, um das Level zu schaffen. Du hast 3 Leben pro Level.',
+    'Zerstöre alle zerbrechlichen Steine, um das Level zu schaffen. In der Kampagne beginnt jedes Level mit 3 Leben; im Endlosmodus bleiben die Leben zwischen den Levels erhalten.',
   helpAim:
     'Ziele vor jedem Schuss: Bewege die Maus oder ziehe den Finger entlang der Hilfslinie, dann klicke oder lass los.',
   helpMovePC:

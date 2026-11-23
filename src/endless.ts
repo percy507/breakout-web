@@ -135,6 +135,7 @@ function spot(
 function generate(n: number, rng: Rng, mechanisms: boolean): LevelDef {
   const b = new Builder();
   const base = 1 + Math.floor((n - 1) / 2);
+  const lateTier = Math.max(0, Math.floor((n - 1) / 10) - 1);
   const brickHp = (hp: number) => Math.max(1, Math.min(12, hp));
   const hpAt = (r: number, rows: number) =>
     brickHp(base + Math.round((1 - r / rows) * 2) + rng.int(-1, 1));
@@ -159,7 +160,7 @@ function generate(n: number, rng: Rng, mechanisms: boolean): LevelDef {
     const rows = 5 + Math.min(7, Math.floor(n / 2));
     const offset = rng.int(0, 1);
     const mask = rng.pick(PATTERNS)(rng, rows);
-    const bombP = n >= 2 ? Math.min(0.1, 0.02 + n * 0.008) : 0;
+    const bombP = n >= 2 ? Math.min(0.16, 0.02 + n * 0.008 + lateTier * 0.01) : 0;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < COLS / 2; c++) {
         if (!mask[r][c]) continue;
@@ -200,7 +201,10 @@ function generate(n: number, rng: Rng, mechanisms: boolean): LevelDef {
     if (n >= 5 && rng.chance(0.6)) {
       const p = spot(rng, placed, 56, top, bottom, rng.chance(0.5));
       if (p) {
-        const speed = rng.range(60, 110) * (rng.chance(0.5) ? 1 : -1);
+        const speed =
+          rng.range(60, 110) *
+          (1 + Math.min(0.45, lateTier * 0.08)) *
+          (rng.chance(0.5) ? 1 : -1);
         const xs = p.x === W / 2 ? [p.x] : [p.x, W - p.x];
         xs.forEach((x, i) => b.bar(x, p.y, 96, 0, spin(i ? -speed : speed)));
       }
@@ -230,8 +234,8 @@ function generate(n: number, rng: Rng, mechanisms: boolean): LevelDef {
     id: `∞${n}`,
     name: `${rng.pick(WORDS_A)} ${rng.pick(WORDS_B)}`,
     chapter: 0,
-    speed: 1 + Math.min(0.3, (n - 1) * 0.02),
-    dark: mechanisms && n >= 6 && rng.chance(0.18),
+    speed: 1 + Math.min(0.5, (n - 1) * 0.02 + lateTier * 0.03),
+    dark: mechanisms && n >= 6 && rng.chance(Math.min(0.35, 0.18 + lateTier * 0.04)),
     drop: 0.35,
     traps: n >= 3,
     bodies: b.bodies,

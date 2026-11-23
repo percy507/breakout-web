@@ -29,7 +29,10 @@ export const MIN_VERTICAL = Math.sin((11 * Math.PI) / 180);
 
 export const SHIELD_Y = 818;
 export const LIVES = 3;
+/** 战役模式生命上限；无尽模式不设上限 */
 export const MAX_LIVES = 5;
+/** 清关生命奖励最多按 10 条计算，生命本身仍可无限累加 */
+export const CLEAR_BONUS_MAX_LIVES = 10;
 
 export const ITEM_W = 40;
 export const ITEM_H = 18;

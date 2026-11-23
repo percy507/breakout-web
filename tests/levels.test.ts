@@ -62,4 +62,9 @@ describe('endless generator', () => {
     expect(deep.some((l) => l.bodies.some((b) => b.kind !== 'brick'))).toBe(true);
     expect(endlessLevel(10, 5).bodies.some((b) => b.brick === 'core')).toBe(true);
   });
+
+  it('keeps adding late-game pressure after the normal speed plateau', () => {
+    expect(endlessLevel(30, 5).speed).toBeGreaterThan(endlessLevel(16, 5).speed);
+    expect(endlessLevel(100, 5).speed).toBeLessThanOrEqual(1.5);
+  });
 });
